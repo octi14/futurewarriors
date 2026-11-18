@@ -1,11 +1,7 @@
-import type {
-  AxeParams,
-  HelmetParams,
-  ItemInstance,
-  ShieldParams,
-  SwordParams,
-  ThrowParams,
-} from "../shared/types";
+import * as THREE from "three";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import type { ItemInstance } from "../shared/types";
+import { buildItemMesh, disposeObject3D } from "./itemMesh";
 
 const rarityStroke: Record<string, string> = {
   common: "#8a7a5c",
@@ -18,194 +14,116 @@ function rarityOf(item: ItemInstance): string {
   return (item.params as { rarity: string }).rarity;
 }
 
-function metalCss(hue: number, rarity: string): string {
-  const lit = rarity === "epic" ? 58 : rarity === "rare" ? 52 : 48;
-  const sat = rarity === "epic" ? 55 : rarity === "rare" ? 42 : rarity === "uncommon" ? 32 : 22;
-  return `hsl(${Math.floor(hue * 360)} ${sat}% ${lit}%)`;
+const cache = new Map<string, string>();
+
+let renderer: THREE.WebGLRenderer | null = null;
+let scene: THREE.Scene | null = null;
+let camera: THREE.PerspectiveCamera | null = null;
+let root: THREE.Group | null = null;
+
+function ensureIconGl(): void {
+  if (renderer) return;
+  renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    alpha: true,
+    preserveDrawingBuffer: true,
+    powerPreference: "low-power",
+  });
+  renderer.setClearColor(0x000000, 0);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+  scene = new THREE.Scene();
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  pmrem.dispose();
+
+  scene.add(new THREE.AmbientLight(0xfff0d8, 0.55));
+  const key = new THREE.DirectionalLight(0xffe2a8, 1.6);
+  key.position.set(2.2, 3.5, 2.8);
+  scene.add(key);
+  const fill = new THREE.DirectionalLight(0xa8c0e8, 0.55);
+  fill.position.set(-2.5, 1.5, -1.5);
+  scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xfff5e0, 0.45);
+  rim.position.set(0, 2, -3);
+  scene.add(rim);
+
+  camera = new THREE.PerspectiveCamera(32, 1, 0.05, 20);
+  root = new THREE.Group();
+  scene.add(root);
 }
 
-export function itemIconDataUrl(item: ItemInstance, size = 64): string {
-  const c = document.createElement("canvas");
-  c.width = size;
-  c.height = size;
-  const ctx = c.getContext("2d")!;
-  ctx.clearRect(0, 0, size, size);
+function fitItemInView(mesh: THREE.Object3D): void {
+  const box = new THREE.Box3().setFromObject(mesh);
+  const size = new THREE.Vector3();
+  const center = new THREE.Vector3();
+  box.getSize(size);
+  box.getCenter(center);
+  mesh.position.sub(center);
 
-  const stroke = rarityStroke[rarityOf(item)] ?? "#8a7a5c";
-  ctx.fillStyle = "rgba(20,14,8,0.35)";
-  ctx.fillRect(2, 2, size - 4, size - 4);
-  ctx.strokeStyle = stroke;
-  ctx.lineWidth = 2;
-  ctx.strokeRect(3, 3, size - 6, size - 6);
-
-  const hue = (item.params as { metalHue?: number; hue?: number; leatherHue?: number }).metalHue
-    ?? (item.params as { hue?: number }).hue
-    ?? (item.params as { leatherHue?: number }).leatherHue
-    ?? 0.5;
-
-  if (item.kind === "sword") drawSword(ctx, item.params as SwordParams, size, stroke);
-  else if (item.kind === "axe") drawAxe(ctx, item.params as AxeParams, size);
-  else if (item.kind === "throw") drawThrow(ctx, item.params as ThrowParams, size);
-  else if (item.kind === "boots") drawPairBoxes(ctx, size, `hsl(${25 + hue * 20},40%,30%)`);
-  else if (item.kind === "shield") drawShield(ctx, item.params as ShieldParams, size, stroke);
-  else if (item.kind === "helmet") drawHelmet(ctx, item.params as HelmetParams, size, stroke);
-  else if (item.kind === "armor") drawRect(ctx, size, metalCss(hue, rarityOf(item)), 0.35, 0.2, 0.3, 0.55);
-  else if (item.kind === "pants") drawPairBoxes(ctx, size, metalCss(hue, rarityOf(item)), true);
-  else if (item.kind === "gloves") drawPairBoxes(ctx, size, metalCss(hue, rarityOf(item)), false, 0.35);
-  else if (item.kind === "belt") drawRect(ctx, size, metalCss(hue, rarityOf(item)), 0.2, 0.42, 0.6, 0.16);
-
-  return c.toDataURL("image/png");
+  const maxDim = Math.max(size.x, size.y, size.z, 0.01);
+  const dist = maxDim * 2.15;
+  camera!.position.set(dist * 0.55, dist * 0.42, dist * 0.95);
+  camera!.near = dist / 100;
+  camera!.far = dist * 20;
+  camera!.lookAt(0, 0, 0);
+  camera!.updateProjectionMatrix();
 }
 
-function drawRect(
-  ctx: CanvasRenderingContext2D,
-  size: number,
-  fill: string,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): void {
-  ctx.fillStyle = fill;
-  ctx.fillRect(size * x, size * y, size * w, size * h);
-}
+/** Icono 3D del ítem (flotando, estilo Diablo/MU). Cacheado por id+tamaño. */
+export function itemIconDataUrl(item: ItemInstance, size = 128): string {
+  const key = `${item.id}:${size}`;
+  const hit = cache.get(key);
+  if (hit) return hit;
 
-function drawPairBoxes(
-  ctx: CanvasRenderingContext2D,
-  size: number,
-  fill: string,
-  tall = false,
-  y = 0.4,
-): void {
-  ctx.fillStyle = fill;
-  const h = tall ? size * 0.4 : size * 0.22;
-  ctx.fillRect(size * 0.22, size * y, size * 0.2, h);
-  ctx.fillRect(size * 0.58, size * y, size * 0.2, h);
-}
+  ensureIconGl();
+  const gl = renderer!;
+  const sc = scene!;
+  const cam = camera!;
+  const hold = root!;
 
-function drawSword(
-  ctx: CanvasRenderingContext2D,
-  p: SwordParams,
-  size: number,
-  stroke: string,
-): void {
-  const metal = metalCss(p.metalHue, p.rarity);
-  const cx = size * 0.5;
-  const bladeH = size * (0.28 + p.bladeLength * 0.22);
-  const bladeW = size * (0.06 + p.bladeWidth * 0.5);
-  ctx.save();
-  ctx.translate(cx, size * 0.56);
-  ctx.rotate(-0.55);
-  ctx.fillStyle = metal;
-  ctx.beginPath();
-  ctx.moveTo(-bladeW * 0.55, 0);
-  ctx.lineTo(bladeW * 0.55, 0);
-  ctx.lineTo(0, -bladeH);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = stroke;
-  ctx.fillRect(-bladeW * 1.6, -2, bladeW * 3.2, 5);
-  ctx.fillStyle = "#5c3b22";
-  ctx.fillRect(-bladeW * 0.35, 2, bladeW * 0.7, size * 0.16);
-  ctx.restore();
-}
+  while (hold.children.length) {
+    const ch = hold.children[0];
+    hold.remove(ch);
+    disposeObject3D(ch);
+  }
 
-function drawAxe(ctx: CanvasRenderingContext2D, p: AxeParams, size: number): void {
-  const metal = metalCss(p.metalHue, p.rarity);
-  ctx.fillStyle = "#5c3b22";
-  ctx.fillRect(size * 0.46, size * 0.2, size * 0.08, size * 0.55);
-  ctx.fillStyle = metal;
-  ctx.fillRect(size * 0.28, size * 0.18, size * 0.44, size * 0.18);
-}
+  gl.setPixelRatio(1);
+  gl.setSize(size, size, false);
 
-function drawThrow(ctx: CanvasRenderingContext2D, p: ThrowParams, size: number): void {
-  const metal = metalCss(p.metalHue, p.rarity);
-  ctx.fillStyle = metal;
-  if (p.subtype === "shuriken") {
-    for (let i = 0; i < 4; i++) {
-      ctx.save();
-      ctx.translate(size * 0.5, size * 0.5);
-      ctx.rotate((i * Math.PI) / 2);
-      ctx.fillRect(-size * 0.06, -size * 0.28, size * 0.12, size * 0.28);
-      ctx.restore();
-    }
-  } else if (p.subtype === "javelin") {
-    ctx.fillStyle = "#5c3b22";
-    ctx.fillRect(size * 0.2, size * 0.46, size * 0.55, size * 0.08);
-    ctx.fillStyle = metal;
-    ctx.beginPath();
-    ctx.moveTo(size * 0.75, size * 0.5);
-    ctx.lineTo(size * 0.9, size * 0.42);
-    ctx.lineTo(size * 0.9, size * 0.58);
-    ctx.fill();
+  const mesh = buildItemMesh(item);
+  // Ángulo “en vitrina” según tipo
+  if (item.kind === "sword" || item.kind === "axe" || item.kind === "throw") {
+    mesh.rotation.z += 0.35;
+    mesh.rotation.y += 0.25;
+  } else if (item.kind === "bow" || item.kind === "crossbow") {
+    mesh.rotation.y += 0.4;
+  } else if (item.kind === "shield" || item.kind === "helmet" || item.kind === "armor") {
+    mesh.rotation.y += 0.35;
+    mesh.rotation.x += 0.1;
   } else {
-    ctx.fillRect(size * 0.3, size * 0.35, size * 0.4, size * 0.28);
+    mesh.rotation.y += 0.45;
   }
-}
+  hold.add(mesh);
+  fitItemInView(hold);
 
-function drawShield(
-  ctx: CanvasRenderingContext2D,
-  p: ShieldParams,
-  size: number,
-  stroke: string,
-): void {
-  const metal = metalCss(p.metalHue, p.rarity);
-  const cx = size * 0.5;
-  const cy = size * 0.52;
-  const w = size * (0.28 + p.width * 0.35);
-  const h = size * (0.3 + p.height * 0.28);
-  ctx.fillStyle = metal;
-  ctx.beginPath();
-  if (p.shape === "round") ctx.arc(cx, cy, w * 0.55, 0, Math.PI * 2);
-  else {
-    ctx.moveTo(cx - w * 0.45, cy - h * 0.4);
-    ctx.lineTo(cx + w * 0.45, cy - h * 0.4);
-    ctx.lineTo(cx + w * 0.35, cy + h * 0.45);
-    ctx.lineTo(cx - w * 0.35, cy + h * 0.45);
-  }
-  ctx.closePath();
-  ctx.fill();
-  ctx.strokeStyle = stroke;
-  ctx.stroke();
-}
+  gl.render(sc, cam);
+  const url = gl.domElement.toDataURL("image/png");
+  cache.set(key, url);
 
-function drawHelmet(
-  ctx: CanvasRenderingContext2D,
-  p: HelmetParams,
-  size: number,
-  stroke: string,
-): void {
-  const metal = metalCss(p.metalHue, p.rarity);
-  const cx = size * 0.5;
-  const cy = size * 0.48;
-  const r = size * (0.16 + p.dome * 0.55);
-  ctx.fillStyle = metal;
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, Math.PI, 0);
-  ctx.lineTo(cx + r, cy + r * 0.35);
-  ctx.lineTo(cx - r, cy + r * 0.35);
-  ctx.closePath();
-  ctx.fill();
-  if (p.style === "horned") {
-    ctx.beginPath();
-    ctx.moveTo(cx - r, cy);
-    ctx.lineTo(cx - r * 1.4, cy - r);
-    ctx.lineTo(cx - r * 0.5, cy - r * 0.2);
-    ctx.moveTo(cx + r, cy);
-    ctx.lineTo(cx + r * 1.4, cy - r);
-    ctx.lineTo(cx + r * 0.5, cy - r * 0.2);
-    ctx.fill();
-  }
-  if (p.style !== "cap") ctx.fillRect(cx - 2, cy, 4, r * 0.7);
-  ctx.strokeStyle = stroke;
-  ctx.stroke();
+  hold.remove(mesh);
+  disposeObject3D(mesh);
+  return url;
 }
 
 export function itemTooltipHtml(item: ItemInstance): string {
   const s = item.stats;
   const rarity = rarityOf(item);
+  const border = rarityStroke[rarity] ?? "#8a7a5c";
   const lines: string[] = [
-    `<div class="tt-name">${item.name}</div>`,
+    `<div class="tt-name" style="border-left:3px solid ${border};padding-left:6px">${item.name}</div>`,
     `<div class="tt-meta">${rarity} · ${item.kind} · ${item.equipSlot} · ${item.gridW}×${item.gridH}</div>`,
   ];
   if (s.damage) lines.push(`<div class="tt-stat">Daño <b>${s.damage}</b></div>`);

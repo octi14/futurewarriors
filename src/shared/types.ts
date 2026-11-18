@@ -11,6 +11,15 @@ export type SwordParams = {
   gripLength: number;
   pommelSize: number;
   metalHue: number;
+  /** Saturación del metal (bajo = acero gris). */
+  metalSat: number;
+  /** Luminosidad del metal (bajo = hierro oscuro). */
+  metalLit: number;
+  gripHue: number;
+  gripStyle: "leather" | "wrap" | "wood";
+  guardStyle: "bar" | "cross" | "disc" | "swept";
+  /** 0..1 cantidad de adornos. */
+  ornament: number;
   rarity: Rarity;
 };
 
@@ -31,9 +40,26 @@ export type ThrowParams = {
   rarity: Rarity;
 };
 
+export type BowParams = {
+  seed: number;
+  draw: number;
+  limbCurve: number;
+  metalHue: number;
+  rarity: Rarity;
+};
+
+export type CrossbowParams = {
+  seed: number;
+  power: number;
+  stockLength: number;
+  metalHue: number;
+  rarity: Rarity;
+};
+
 export type BootsParams = {
   seed: number;
-  style: "light" | "trail" | "plate";
+  /** light=botas cuero, trail=botas altas, greaves=grebas metal, plate=botas + placa. */
+  style: "light" | "trail" | "greaves" | "plate";
   height: number;
   sole: number;
   leatherHue: number;
@@ -43,6 +69,8 @@ export type BootsParams = {
 export type ShieldParams = {
   seed: number;
   shape: "round" | "heater" | "kite";
+  /** Madera, madera con herrajes, o metal macizo. */
+  material: "wood" | "reinforced" | "metal";
   width: number;
   height: number;
   boss: number;
@@ -53,6 +81,8 @@ export type ShieldParams = {
 export type HelmetParams = {
   seed: number;
   style: "cap" | "nasal" | "full" | "barbute" | "sallet" | "great" | "horned";
+  /** Cuero endurecido, bronce/latón, o acero. */
+  material: "leather" | "bronze" | "steel";
   dome: number;
   brim: number;
   metalHue: number;
@@ -61,7 +91,14 @@ export type HelmetParams = {
 
 export type ArmorParams = {
   seed: number;
-  style: "leather" | "chain" | "plate";
+  /** Tipo constructivo de la armadura. */
+  style: "leather" | "padded" | "chain" | "scale" | "plate";
+  /**
+   * Acabado (sobre todo metal):
+   * bare = acero/hierro sin pintar, painted = lacado de color, polished = pulido,
+   * darkened = ennegrecido / brunido.
+   */
+  finish: "bare" | "painted" | "polished" | "darkened";
   bulk: number;
   hue: number;
   rarity: Rarity;
@@ -121,6 +158,8 @@ export type ItemKind =
   | "sword"
   | "axe"
   | "throw"
+  | "bow"
+  | "crossbow"
   | "boots"
   | "shield"
   | "helmet"
@@ -133,6 +172,8 @@ export type ItemParams =
   | SwordParams
   | AxeParams
   | ThrowParams
+  | BowParams
+  | CrossbowParams
   | BootsParams
   | ShieldParams
   | HelmetParams
@@ -185,6 +226,8 @@ export type Actor = {
   hurtTimer: number;
   stunTimer: number;
   alive: boolean;
+  /** Segundos restantes de cadáver / anim de muerte (0 si vivo). */
+  deathTimer: number;
   moving: boolean;
   running: boolean;
   lastMoveX: number;
@@ -218,9 +261,40 @@ export type CoinDrop = {
   ttl: number;
 };
 
+export type ProjectileVisual = "weapon" | "arrow" | "bolt";
+
+/** Proyectil en vuelo (arrojadiza / flecha / dardo). */
+export type Projectile = {
+  id: string;
+  pos: Vec2;
+  dirX: number;
+  dirY: number;
+  speed: number;
+  life: number;
+  damage: number;
+  radius: number;
+  spin: number;
+  spinRate: number;
+  knock: number;
+  stun: number;
+  visual: ProjectileVisual;
+  sourceItem: ItemInstance | null;
+};
+
 export type CoreStatId = keyof CoreStats;
 
-export type ChargeKind = "none" | "thrust" | "arc" | "slam" | "punch" | "throw";
+export type ChargeKind = "none" | "thrust" | "arc" | "slam" | "punch" | "throw" | "shot";
+
+/** Animación de combate del jugador (clips + poses procedurales). */
+export type CombatAnimKind =
+  | "slash"
+  | "throw"
+  | "dualR"
+  | "dualL"
+  | "twohand"
+  | "bow"
+  | "crossbow"
+  | "block";
 
 export type WorldConfig = {
   mapSize: number;

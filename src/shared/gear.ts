@@ -1,10 +1,12 @@
 import { pickRarity, rarityMult, rngFromSeed } from "./rng";
-import { createSwordItem, nextItemId, randomSwordSeed } from "./swords";
+import { createDaggerItem, createSwordItem, nextItemId, randomSwordSeed } from "./swords";
 import type {
   ArmorParams,
   AxeParams,
   BeltParams,
   BootsParams,
+  BowParams,
+  CrossbowParams,
   GlovesParams,
   HelmetParams,
   ItemInstance,
@@ -12,6 +14,7 @@ import type {
   PantsParams,
   Rarity,
   ShieldParams,
+  SwordParams,
   ThrowParams,
 } from "./types";
 
@@ -52,10 +55,10 @@ const helmAdj: Record<Rarity, string[]> = {
   epic: ["Yelmo", "Corona", "Ancestral"],
 };
 const armorAdj: Record<Rarity, string[]> = {
-  common: ["Remendada", "Tosca", "Vieja"],
-  uncommon: ["Acolchada", "Firme", "Curtida"],
-  rare: ["Reforzada", "Noble", "Runada"],
-  epic: ["Égida", "Tempestad", "Ancestral"],
+  common: ["Remendada", "Tosca", "Vieja", "Oxidada"],
+  uncommon: ["Acolchada", "Firme", "Curtida", "Anillada"],
+  rare: ["Reforzada", "Noble", "Runada", "Pulida"],
+  epic: ["Égida", "Tempestad", "Ancestral", "Imperial"],
 };
 const pantsAdj: Record<Rarity, string[]> = {
   common: ["Rotos", "Simples", "Gastados"],
@@ -87,24 +90,44 @@ const throwAdj: Record<Rarity, string[]> = {
   rare: ["Certero", "Noble", "Runado"],
   epic: ["Tempestad", "Ancestral", "Letal"],
 };
+const bowAdj: Record<Rarity, string[]> = {
+  common: ["Tosco", "Simple", "Viejo"],
+  uncommon: ["Ágil", "Tenso", "Ligero"],
+  rare: ["Certero", "Noble", "Runado"],
+  epic: ["Tempestad", "Ancestral", "Letal"],
+};
+const crossbowAdj: Record<Rarity, string[]> = {
+  common: ["Tosca", "Simple", "Oxidada"],
+  uncommon: ["Firme", "Pesada", "Tensa"],
+  rare: ["Certera", "Noble", "Runada"],
+  epic: ["Tempestad", "Ancestral", "Letal"],
+};
 
 export function createBootsItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
   const styleRoll = r();
   const style: BootsParams["style"] =
-    styleRoll < 0.4 ? "light" : styleRoll < 0.75 ? "trail" : "plate";
+    styleRoll < 0.35 ? "light" : styleRoll < 0.6 ? "trail" : styleRoll < 0.82 ? "greaves" : "plate";
   const params: BootsParams = {
     seed,
     style,
-    height: 0.22 + r() * 0.28,
+    height: style === "greaves" ? 0.38 + r() * 0.2 : 0.22 + r() * 0.28,
     sole: 0.04 + r() * 0.05,
     leatherHue: r(),
     rarity,
   };
   const m = rarityMult(rarity);
   const speed =
-    style === "light" ? 1.08 + r() * 0.12 : style === "trail" ? 1.12 + r() * 0.14 : 1.04 + r() * 0.08;
+    style === "light"
+      ? 1.08 + r() * 0.12
+      : style === "trail"
+        ? 1.12 + r() * 0.14
+        : style === "greaves"
+          ? 1.02 + r() * 0.06
+          : 1.04 + r() * 0.08;
+  const nouns =
+    style === "greaves" ? ["Grebas", "Canilleras", "Grebas"] : style === "plate" ? ["Botas de placa", "Botas blindadas", "Escarpes"] : ["Botas", "Botines", "Botas de cuero"];
   return {
     id: nextItemId(seed),
     kind: "boots",
@@ -113,11 +136,12 @@ export function createBootsItem(seed: number): ItemInstance {
     params,
     stats: {
       ...emptyCombat(),
-      armor: style === "plate" ? Math.round(1.5 * m * 10) / 10 : 0,
+      armor:
+        style === "greaves" || style === "plate" ? Math.round((style === "greaves" ? 2 : 1.5) * m * 10) / 10 : 0,
       moveSpeedMult: Math.round(speed * m * 100) / 100,
       maxHpBonus: 0,
     },
-    name: pickName(seed, rarity, bootAdj, ["Botas", "Grebas", "Botines"]),
+    name: pickName(seed, rarity, bootAdj, nouns),
     gridW: 2,
     gridH: 2,
   };
@@ -129,9 +153,13 @@ export function createShieldItem(seed: number): ItemInstance {
   const shapeRoll = r();
   const shape: ShieldParams["shape"] =
     shapeRoll < 0.4 ? "round" : shapeRoll < 0.75 ? "heater" : "kite";
+  const matRoll = r();
+  const material: ShieldParams["material"] =
+    matRoll < 0.4 ? "wood" : matRoll < 0.75 ? "reinforced" : "metal";
   const params: ShieldParams = {
     seed,
     shape,
+    material,
     width: 0.35 + r() * 0.35,
     height: 0.4 + r() * 0.45,
     boss: 0.06 + r() * 0.06,
@@ -140,6 +168,13 @@ export function createShieldItem(seed: number): ItemInstance {
   };
   const m = rarityMult(rarity);
   const area = params.width * params.height;
+  const matArmor = material === "metal" ? 1.35 : material === "reinforced" ? 1.15 : 1;
+  const nouns =
+    material === "metal"
+      ? ["Escudo de acero", "Broquel metálico", "Rodela de hierro"]
+      : material === "reinforced"
+        ? ["Escudo reforzado", "Broquel herrado", "Rodela claveteada"]
+        : ["Escudo de madera", "Broquel", "Rodela"];
   return {
     id: nextItemId(seed),
     kind: "shield",
@@ -148,11 +183,11 @@ export function createShieldItem(seed: number): ItemInstance {
     params,
     stats: {
       ...emptyCombat(),
-      armor: Math.round((3 + area * 8) * m * 10) / 10,
-      moveSpeedMult: Math.max(0.92, 1 - area * 0.08),
+      armor: Math.round((3 + area * 8) * matArmor * m * 10) / 10,
+      moveSpeedMult: Math.max(0.9, 1 - area * 0.08 - (material === "metal" ? 0.03 : 0)),
       maxHpBonus: 0,
     },
-    name: pickName(seed, rarity, shieldAdj, ["Escudo", "Broquel", "Rodela"]),
+    name: pickName(seed, rarity, shieldAdj, nouns),
     gridW: 2,
     gridH: shape === "kite" ? 3 : 2,
   };
@@ -171,9 +206,19 @@ export function createHelmetItem(seed: number): ItemInstance {
     "horned",
   ];
   const style = styles[Math.floor(r() * styles.length)];
+  const matRoll = r();
+  const material: HelmetParams["material"] =
+    style === "cap" && matRoll < 0.55
+      ? "leather"
+      : matRoll < 0.22
+        ? "bronze"
+        : matRoll < 0.35
+          ? "leather"
+          : "steel";
   const params: HelmetParams = {
     seed,
     style,
+    material,
     dome: 0.16 + r() * 0.14,
     brim: 0.02 + r() * 0.06,
     metalHue: r(),
@@ -188,6 +233,13 @@ export function createHelmetItem(seed: number): ItemInstance {
         : style === "nasal" || style === "sallet"
           ? 1.15
           : 1;
+  const matMul = material === "steel" ? 1.2 : material === "bronze" ? 1.05 : 0.85;
+  const nouns =
+    material === "leather"
+      ? ["Capacete de cuero", "Casco de cuero", "Capucha endurecida"]
+      : material === "bronze"
+        ? ["Casco de bronce", "Celada de bronce", "Yelmo bronceado"]
+        : ["Casco", "Celada", "Yelmo de acero"];
   return {
     id: nextItemId(seed),
     kind: "helmet",
@@ -196,11 +248,11 @@ export function createHelmetItem(seed: number): ItemInstance {
     params,
     stats: {
       ...emptyCombat(),
-      armor: Math.round((2 + params.dome * 10) * cover * m * 10) / 10,
+      armor: Math.round((2 + params.dome * 10) * cover * matMul * m * 10) / 10,
       moveSpeedMult: style === "great" ? 0.96 : 1,
       maxHpBonus: Math.round((8 + params.dome * 40) * m),
     },
-    name: pickName(seed, rarity, helmAdj, ["Casco", "Celada", "Yelmo"]),
+    name: pickName(seed, rarity, helmAdj, nouns),
     gridW: 2,
     gridH: 2,
   };
@@ -211,17 +263,61 @@ export function createArmorItem(seed: number): ItemInstance {
   const rarity = pickRarity(r);
   const styleRoll = r();
   const style: ArmorParams["style"] =
-    styleRoll < 0.4 ? "leather" : styleRoll < 0.75 ? "chain" : "plate";
+    styleRoll < 0.18
+      ? "leather"
+      : styleRoll < 0.36
+        ? "padded"
+        : styleRoll < 0.58
+          ? "chain"
+          : styleRoll < 0.76
+            ? "scale"
+            : "plate";
+  const finishRoll = r();
+  let finish: ArmorParams["finish"] = "bare";
+  if (style === "leather" || style === "padded") {
+    finish = finishRoll < 0.7 ? "painted" : "darkened";
+  } else if (style === "plate" || style === "scale") {
+    finish =
+      finishRoll < 0.35
+        ? "bare"
+        : finishRoll < 0.55
+          ? "polished"
+          : finishRoll < 0.8
+            ? "painted"
+            : "darkened";
+  } else {
+    // chain: suele ser metal sin pintar o brunido
+    finish = finishRoll < 0.55 ? "bare" : finishRoll < 0.8 ? "darkened" : "polished";
+  }
   const params: ArmorParams = {
     seed,
     style,
-    bulk: 0.5 + r() * 0.5,
+    finish,
+    bulk: 0.45 + r() * 0.55,
     hue: r(),
     rarity,
   };
   const m = rarityMult(rarity);
-  const armor =
-    style === "plate" ? 8 + params.bulk * 6 : style === "chain" ? 5 + params.bulk * 4 : 3 + params.bulk * 2;
+  const armorBase =
+    style === "plate"
+      ? 9 + params.bulk * 6
+      : style === "scale"
+        ? 7 + params.bulk * 5
+        : style === "chain"
+          ? 5.5 + params.bulk * 4
+          : style === "padded"
+            ? 3.5 + params.bulk * 2.5
+            : 3 + params.bulk * 2;
+  const nouns =
+    style === "plate"
+      ? ["Coraza", "Placas", "Armadura de placas"]
+      : style === "scale"
+        ? ["Escamas", "Lorica", "Cota de escamas"]
+        : style === "chain"
+          ? ["Cota de malla", "Anillas", "Hauberk"]
+          : style === "padded"
+            ? ["Gambesón", "Acolchado", "Jubón"]
+            : ["Cuero", "Peto de cuero", "Jaco"];
   return {
     id: nextItemId(seed),
     kind: "armor",
@@ -230,11 +326,12 @@ export function createArmorItem(seed: number): ItemInstance {
     params,
     stats: {
       ...emptyCombat(),
-      armor: Math.round(armor * m * 10) / 10,
-      moveSpeedMult: style === "plate" ? 0.92 : style === "chain" ? 0.96 : 1,
+      armor: Math.round(armorBase * m * 10) / 10,
+      moveSpeedMult:
+        style === "plate" ? 0.9 : style === "scale" ? 0.94 : style === "chain" ? 0.96 : 1,
       maxHpBonus: Math.round((4 + params.bulk * 12) * m),
     },
-    name: pickName(seed, rarity, armorAdj, ["Cota", "Armadura", "Coraza"]),
+    name: pickName(seed, rarity, armorAdj, nouns),
     gridW: 2,
     gridH: 3,
   };
@@ -340,24 +437,31 @@ export function createBeltItem(seed: number): ItemInstance {
   };
 }
 
-export function createAxeItem(seed: number): ItemInstance {
+export function createAxeItem(seed: number, small = false): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
   const styleRoll = r();
-  const headStyle: AxeParams["headStyle"] =
-    styleRoll < 0.4 ? "bearded" : styleRoll < 0.75 ? "broad" : "double";
+  const headStyle: AxeParams["headStyle"] = small
+    ? styleRoll < 0.6
+      ? "bearded"
+      : "broad"
+    : styleRoll < 0.4
+      ? "bearded"
+      : styleRoll < 0.75
+        ? "broad"
+        : "double";
   const params: AxeParams = {
     seed,
     headStyle,
-    headSize: 0.18 + r() * 0.2,
-    haftLength: 0.55 + r() * 0.55,
+    headSize: small ? 0.1 + r() * 0.1 : 0.18 + r() * 0.2,
+    haftLength: small ? 0.32 + r() * 0.22 : 0.55 + r() * 0.55,
     metalHue: r(),
     rarity,
   };
   const m = rarityMult(rarity);
-  const dmg = (14 + params.headSize * 55 + params.haftLength * 10) * m;
-  const reach = 0.5 + params.haftLength * 0.85;
-  const spd = Math.max(0.5, 1.35 - params.headSize * 2.2);
+  const dmg = (small ? 9 : 14) + params.headSize * (small ? 40 : 55) + params.haftLength * (small ? 6 : 10);
+  const reach = 0.4 + params.haftLength * (small ? 0.7 : 0.85);
+  const spd = Math.max(0.55, (small ? 1.55 : 1.35) - params.headSize * (small ? 1.6 : 2.2));
   return {
     id: nextItemId(seed),
     kind: "axe",
@@ -365,18 +469,40 @@ export function createAxeItem(seed: number): ItemInstance {
     seed,
     params,
     stats: {
-      damage: Math.round(dmg * 10) / 10,
+      damage: Math.round(dmg * m * 10) / 10,
       reach: Math.round(reach * 100) / 100,
       attackSpeed: Math.round(spd * 100) / 100,
-      windup: Math.round((0.18 + params.headSize) * 100) / 100,
+      windup: Math.round((0.12 + params.headSize * (small ? 0.6 : 1)) * 100) / 100,
       armor: 0,
       moveSpeedMult: 1,
       maxHpBonus: 0,
     },
-    name: pickName(seed, rarity, axeAdj, ["Hacha", "Hachuela", "Bipennis"]),
-    gridW: 2,
-    gridH: 3,
+    name: pickName(
+      seed,
+      rarity,
+      axeAdj,
+      small ? ["Hachuela", "Hacha de mano", "Hacha corta"] : ["Hacha", "Hachuela", "Bipennis"],
+    ),
+    gridW: small ? 1 : 2,
+    gridH: small ? 2 : 3,
   };
+}
+
+export function createSmallAxeItem(seed: number): ItemInstance {
+  return createAxeItem(seed, true);
+}
+
+/** Armas cuerpo a cuerpo pequeñas (puñal / hacha corta), no arrojadizas ni a distancia. */
+export function isDualWieldable(item: ItemInstance): boolean {
+  if (item.kind === "sword") {
+    const p = item.params as SwordParams;
+    return p.bladeType !== "wide" && p.bladeLength <= 0.58 && item.gridH <= 2;
+  }
+  if (item.kind === "axe") {
+    const p = item.params as AxeParams;
+    return p.haftLength <= 0.58 && p.headSize <= 0.22 && item.gridH <= 2;
+  }
+  return false;
 }
 
 export function createThrowItem(seed: number): ItemInstance {
@@ -405,28 +531,28 @@ export function createThrowItem(seed: number): ItemInstance {
   let nouns = ["Arrojo"];
   if (subtype === "throwingAxe") {
     damage = (9 + params.size * 14) * m;
-    reach = 1.6 + params.size * 0.4;
+    reach = 5.5 + params.size * 1.2;
     attackSpeed = 1.15;
     gridW = 2;
     gridH = 2;
     nouns = ["Hacha arrojadiza", "Francisca"];
   } else if (subtype === "throwingDagger") {
     damage = (7 + params.size * 10) * m;
-    reach = 1.4 + params.size * 0.3;
+    reach = 6 + params.size * 1.4;
     attackSpeed = 1.55;
     gridW = 1;
     gridH = 2;
     nouns = ["Puñal arrojadizo", "Kunai"];
   } else if (subtype === "shuriken") {
     damage = (5 + params.size * 8) * m;
-    reach = 1.8 + params.size * 0.5;
+    reach = 7 + params.size * 1.6;
     attackSpeed = 1.85;
     gridW = 1;
     gridH = 1;
     nouns = ["Shuriken", "Estrella"];
   } else {
     damage = (10 + params.size * 16) * m;
-    reach = 2.4 + params.size * 0.7;
+    reach = 9 + params.size * 2;
     attackSpeed = 0.95;
     gridW = 1;
     gridH = 3;
@@ -453,17 +579,91 @@ export function createThrowItem(seed: number): ItemInstance {
   };
 }
 
+export function createBowItem(seed: number): ItemInstance {
+  const r = rngFromSeed(seed);
+  const rarity = pickRarity(r);
+  const params: BowParams = {
+    seed,
+    draw: 0.55 + r() * 0.45,
+    limbCurve: 0.35 + r() * 0.5,
+    metalHue: r(),
+    rarity,
+  };
+  const m = rarityMult(rarity);
+  const damage = (7 + params.draw * 14) * m;
+  const reach = 10 + params.draw * 4;
+  const attackSpeed = Math.max(0.7, 1.35 - params.draw * 0.35);
+  return {
+    id: nextItemId(seed),
+    kind: "bow",
+    equipSlot: "weapon",
+    seed,
+    params,
+    stats: {
+      damage: Math.round(damage * 10) / 10,
+      reach: Math.round(reach * 100) / 100,
+      attackSpeed: Math.round(attackSpeed * 100) / 100,
+      windup: Math.round((0.16 + params.draw * 0.12) * 100) / 100,
+      armor: 0,
+      moveSpeedMult: 1,
+      maxHpBonus: 0,
+    },
+    name: pickName(seed, rarity, bowAdj, ["Arco", "Arco largo", "Arco de caza"]),
+    gridW: 1,
+    gridH: 4,
+  };
+}
+
+export function createCrossbowItem(seed: number): ItemInstance {
+  const r = rngFromSeed(seed);
+  const rarity = pickRarity(r);
+  const params: CrossbowParams = {
+    seed,
+    power: 0.5 + r() * 0.5,
+    stockLength: 0.45 + r() * 0.35,
+    metalHue: r(),
+    rarity,
+  };
+  const m = rarityMult(rarity);
+  const damage = (12 + params.power * 18) * m;
+  const reach = 8.5 + params.power * 3;
+  const attackSpeed = Math.max(0.45, 0.85 - params.power * 0.25);
+  return {
+    id: nextItemId(seed),
+    kind: "crossbow",
+    equipSlot: "weapon",
+    seed,
+    params,
+    stats: {
+      damage: Math.round(damage * 10) / 10,
+      reach: Math.round(reach * 100) / 100,
+      attackSpeed: Math.round(attackSpeed * 100) / 100,
+      windup: Math.round((0.22 + params.power * 0.15) * 100) / 100,
+      armor: 0,
+      moveSpeedMult: 0.98,
+      maxHpBonus: 0,
+    },
+    name: pickName(seed, rarity, crossbowAdj, ["Ballesta", "Ballesta pesada", "Ballesta de asedio"]),
+    gridW: 2,
+    gridH: 2,
+  };
+}
+
 export function createRandomLootItem(): ItemInstance {
   const seed = randomSwordSeed();
   const roll = Math.random();
-  if (roll < 0.18) return createSwordItem(seed);
-  if (roll < 0.28) return createAxeItem(seed);
+  if (roll < 0.1) return createSwordItem(seed);
+  if (roll < 0.18) return createDaggerItem(seed);
+  if (roll < 0.24) return createAxeItem(seed);
+  if (roll < 0.32) return createSmallAxeItem(seed);
   if (roll < 0.4) return createThrowItem(seed);
-  if (roll < 0.5) return createArmorItem(seed);
-  if (roll < 0.58) return createPantsItem(seed);
-  if (roll < 0.66) return createHelmetItem(seed);
-  if (roll < 0.74) return createBootsItem(seed);
-  if (roll < 0.82) return createShieldItem(seed);
-  if (roll < 0.9) return createGlovesItem(seed);
+  if (roll < 0.46) return createBowItem(seed);
+  if (roll < 0.52) return createCrossbowItem(seed);
+  if (roll < 0.6) return createArmorItem(seed);
+  if (roll < 0.67) return createPantsItem(seed);
+  if (roll < 0.74) return createHelmetItem(seed);
+  if (roll < 0.8) return createBootsItem(seed);
+  if (roll < 0.86) return createShieldItem(seed);
+  if (roll < 0.92) return createGlovesItem(seed);
   return createBeltItem(seed);
 }

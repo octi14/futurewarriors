@@ -4,7 +4,9 @@ import {
   BAG_COLS,
   BAG_ROWS,
   EQUIP_SLOT_LABELS,
+  getCombatWeaponStats,
   getEquipped,
+  getOffhandWeapon,
   statUpgradeCost,
 } from "../sim/world";
 import { itemIconDataUrl, itemTooltipHtml } from "./itemIcon";
@@ -15,8 +17,23 @@ export type ProjectFn = (worldX: number, worldZ: number, height: number) => {
   visible: boolean;
 };
 
+function itemGlowVars(item: ItemInstance): string {
+  const rarity = (item.params as { rarity: string }).rarity;
+  const hue =
+    (item.params as { metalHue?: number; hue?: number; leatherHue?: number }).metalHue ??
+    (item.params as { hue?: number }).hue ??
+    (item.params as { leatherHue?: number }).leatherHue ??
+    0.5;
+  const sat = rarity === "epic" ? 55 : rarity === "rare" ? 45 : rarity === "uncommon" ? 35 : 18;
+  const lit = rarity === "epic" ? 62 : rarity === "rare" ? 58 : rarity === "uncommon" ? 52 : 48;
+  const str = rarity === "epic" ? 1 : rarity === "rare" ? 0.65 : rarity === "uncommon" ? 0.35 : 0.12;
+  return `--glow: hsl(${Math.floor(hue * 360)} ${sat}% ${lit}%); --glow-str: ${str}`;
+}
+
 function iconImg(item: ItemInstance): string {
-  return `<img class="item-icon" src="${itemIconDataUrl(item)}" alt="" draggable="false" />`;
+  const px = Math.max(96, Math.max(item.gridW, item.gridH) * 56);
+  const rarity = (item.params as { rarity: string }).rarity;
+  return `<img class="item-icon rarity-${rarity}" style="${itemGlowVars(item)}" src="${itemIconDataUrl(item, px)}" alt="" draggable="false" />`;
 }
 
 function uiKey(world: WorldState): string {
@@ -136,25 +153,44 @@ export function bindHud(handlers: {
     const itemsHtml = world.bag
       .map((p) => {
         const { item, x, y } = p;
-        return `<button type="button" class="bag-item" data-bag-item="${item.id}" data-tip="1" data-item-id="${item.id}"
-          style="grid-column:${x + 1} / span ${item.gridW};grid-row:${y + 1} / span ${item.gridH}">
+        const rarity = (item.params as { rarity: string }).rarity;
+        return `<button type="button" class="bag-item rarity-${rarity}" data-bag-item="${item.id}" data-tip="1" data-item-id="${item.id}"
+          style="grid-column:${x + 1} / span ${item.gridW};grid-row:${y + 1} / span ${item.gridH};${itemGlowVars(item)}">
           ${iconImg(item)}
         </button>`;
       })
       .join("");
 
+    const slotGlyph: Record<EquipSlotId, string> = {
+      amulet: `<svg class="eq-glyph" viewBox="0 0 24 24"><path d="M12 3l2.2 4.4 4.8.7-3.5 3.4.8 4.8L12 14.8 7.7 16.3l.8-4.8L5 8.1l4.8-.7z"/></svg>`,
+      helmet: `<svg class="eq-glyph" viewBox="0 0 24 24"><path d="M5 14c0-4.5 3-8 7-8s7 3.5 7 8v2H5v-2z"/><path d="M5 16h14v2.5c0 .8-.7 1.5-1.5 1.5h-11C5.7 20 5 19.3 5 18.5V16z"/></svg>`,
+      weapon: `<svg class="eq-glyph" viewBox="0 0 24 24"><path d="M14 3l7 7-1.5 1.5-2.2-2.2-6.6 6.6-3.2-.5-.5-3.2 6.6-6.6-2.2-2.2z"/><path d="M8.5 15.5L5 19"/></svg>`,
+      armor: `<svg class="eq-glyph" viewBox="0 0 24 24"><path d="M12 3l6 2v4c0 5-2.5 8.5-6 10-3.5-1.5-6-5-6-10V5l6-2z"/><path d="M12 7v10"/></svg>`,
+      offhand: `<svg class="eq-glyph" viewBox="0 0 24 24"><path d="M12 3c4 0 7 2 7 5v7c0 3-3 6-7 7-4-1-7-4-7-7V8c0-3 3-5 7-5z"/></svg>`,
+      gloves: `<svg class="eq-glyph" viewBox="0 0 24 24"><path d="M8 10V6.5a1.5 1.5 0 013 0V10"/><path d="M11 10V5.5a1.5 1.5 0 013 0V10"/><path d="M14 10V6.8a1.4 1.4 0 012.8 0V12c0 3-1.5 5-4.8 5H10c-2.5 0-4-1.8-4-4.2V11a1.5 1.5 0 013 0v-.2"/></svg>`,
+      belt: `<svg class="eq-glyph" viewBox="0 0 24 24"><path d="M3 11h18v3H3z"/><rect x="10" y="10" width="4" height="5" rx="0.5"/></svg>`,
+      pants: `<svg class="eq-glyph" viewBox="0 0 24 24"><path d="M8 4h8l-.5 5L17 20h-3.2l-1.3-8h-.8L10.2 20H7L8.5 9z"/></svg>`,
+      boots: `<svg class="eq-glyph" viewBox="0 0 24 24"><path d="M9 4h4v9h5l2 3.5H8.5C7 16.5 6 15 6 13.2V4z"/></svg>`,
+      ring1: `<svg class="eq-glyph" viewBox="0 0 24 24"><circle cx="12" cy="13" r="5.5"/><path d="M10 7.5l2-3 2 3"/></svg>`,
+      ring2: `<svg class="eq-glyph" viewBox="0 0 24 24"><circle cx="12" cy="13" r="5.5"/><path d="M10 7.5l2-3 2 3"/></svg>`,
+    };
+
     const eqSlot = (slot: EquipSlotId, cls = "") => {
       const item = world.equipment[slot];
       const label = EQUIP_SLOT_LABELS[slot];
+      const glyph = slotGlyph[slot];
       if (!item) {
-        return `<button type="button" class="eq-slot empty ${cls}" data-unequip="${slot}">
-          <span class="eq-label">${label}</span>
-        </button>`;
+        return `<button type="button" class="eq-slot empty ${cls}" data-unequip="${slot}" title="${label}">
+          ${glyph}
+        </button>
+        <span class="eq-label">${label}</span>`;
       }
-      return `<button type="button" class="eq-slot filled ${cls}" data-unequip="${slot}" data-tip="1" data-item-id="${item.id}">
-        <span class="eq-label">${label}</span>
+      const rarity = (item.params as { rarity: string }).rarity;
+      return `<button type="button" class="eq-slot filled rarity-${rarity} ${cls}" data-unequip="${slot}" data-tip="1" data-item-id="${item.id}" title="${label}" style="${itemGlowVars(item)}">
+        ${glyph}
         ${iconImg(item)}
-      </button>`;
+      </button>
+      <span class="eq-label">${label}</span>`;
     };
 
     invEl.innerHTML = `
@@ -180,9 +216,11 @@ export function bindHud(handlers: {
           </div>
         </div>
         <div class="inv-storage">
-          <div class="inv-section">Mochila · click equipar · shift+click tirar</div>
-          <div class="bag-grid" style="grid-template-columns:repeat(${BAG_COLS},var(--cell));grid-template-rows:repeat(${BAG_ROWS},var(--cell))">
-            ${cells}${itemsHtml}
+          <div class="inv-section">Mochila</div>
+          <div class="bag-frame">
+            <div class="bag-grid" style="grid-template-columns:repeat(${BAG_COLS},var(--cell));grid-template-rows:repeat(${BAG_ROWS},var(--cell))">
+              ${cells}${itemsHtml}
+            </div>
           </div>
         </div>
       </div>
@@ -233,11 +271,13 @@ export function bindHud(handlers: {
     enLabel.textContent = `${Math.ceil(p.energy)}/${p.maxEnergy}`;
 
     const c = p.core;
+    const dual = getOffhandWeapon(world);
+    const stats = getCombatWeaponStats(world);
     beltEl.innerHTML = `
-      <div class="weapon-name">${eq ? eq.name : "Puños"}</div>
+      <div class="weapon-name">${eq ? (dual ? `${eq.name} + ${dual.name}` : eq.name) : "Puños"}</div>
       ${
         eq
-          ? `<div class="weapon-stats">DMG ${eq.stats.damage} · Alc ${eq.stats.reach} · Vel ${eq.stats.attackSpeed}</div>`
+          ? `<div class="weapon-stats">DMG ${stats.damage} · Alc ${stats.reach} · Vel ${stats.attackSpeed}</div>`
           : `<div class="weapon-stats">Sin arma equipada</div>`
       }
       <div class="core-stats">FUE ${c.strength} · VEL ${c.speed} · DEF ${c.defense} · ${world.coins}🪙</div>

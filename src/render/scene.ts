@@ -1,15 +1,16 @@
 import * as THREE from "three";
-import type { ArmorParams, BeltParams, BootsParams } from "../shared/types";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { WorldState } from "../sim/world";
-import { SLASH_DURATION } from "../sim/world";
+import { AI_CORPSE_TIME, AI_DEATH_ANIM, isTwoHanded, SLASH_DURATION } from "../sim/world";
 import { createAiBody, type AiBodyHandle } from "./aiBody";
 import {
-  buildItemMesh,
-  buildWornArmorMesh,
-  buildWornBeltMesh,
-  buildWornBootMesh,
-  disposeObject3D,
-} from "./itemMesh";
+  attachEquippedVisuals,
+  emptyEquipMeshes,
+  equipKey,
+  mountEquipMeshes,
+  type EquipMeshes,
+} from "./equipAttach";
+import { buildItemMesh, buildProjectileMesh, disposeObject3D } from "./itemMesh";
 import { createHero } from "./loadHero";
 
 export type RenderHandles = {
@@ -38,13 +39,22 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.shadowMap.enabled = true;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.92;
+  renderer.toneMappingExposure = 0.96;
   container.prepend(renderer.domElement);
 
-  const hemi = new THREE.HemisphereLight(0xcbb892, 0x3a2e1c, 0.85);
+  // Environment para reflejos en metal (filo / brillo)
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  scene.environmentIntensity = 0.55;
+  pmrem.dispose();
+
+  const hemi = new THREE.HemisphereLight(0xcbb892, 0x3a2e1c, 0.8);
   scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xe6c58a, 1.05);
+  const sun = new THREE.DirectionalLight(0xffe2a8, 1.12);
   sun.position.set(18, 28, 8);
+  const rim = new THREE.DirectionalLight(0xb8d0ff, 0.22);
+  rim.position.set(-12, 10, -8);
+  scene.add(rim);
   sun.castShadow = true;
   sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.near = 1;
@@ -103,20 +113,8 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
   hero.root.rotation.y = Math.PI;
   playerMesh.add(hero.root);
 
-  let playerSword = new THREE.Group();
-  let playerShield = new THREE.Group();
-  let playerHelmet = new THREE.Group();
-  let playerArmor = new THREE.Group();
-  let playerBelt = new THREE.Group();
-  let playerBootL = new THREE.Group();
-  let playerBootR = new THREE.Group();
-  hero.handGrip.add(playerSword);
-  hero.offhandGrip.add(playerShield);
-  hero.headGrip.add(playerHelmet);
-  hero.torsoGrip.add(playerArmor);
-  hero.beltGrip.add(playerBelt);
-  hero.bootGripL.add(playerBootL);
-  hero.bootGripR.add(playerBootR);
+  let equipMeshes: EquipMeshes = emptyEquipMeshes();
+  mountEquipMeshes(hero, equipMeshes);
 
   const swingMat = new THREE.MeshBasicMaterial({
     color: 0xe8dcc8,
@@ -140,16 +138,29 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
   const aiMeshes = new Map<string, AiBodyHandle>();
   const lootMeshes = new Map<string, THREE.Group>();
   const lootItemId = new Map<string, string>();
+  const lootPlaceholders = new Map<string, THREE.Mesh>();
   const coinMeshes = new Map<string, THREE.Mesh>();
+  const projectileMeshes = new Map<string, THREE.Group>();
   let equippedKey = "";
   const AI_SWING = 0.28;
+  /** Máx. meshes de loot nuevos por frame (evita hitch al matar). */
+  const LOOT_BUILDS_PER_FRAME = 1;
 
   const coinGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.04, 12);
   const coinMat = new THREE.MeshStandardMaterial({
-    color: 0xe8c44a,
-    metalness: 0.85,
+    color: 0xf0d060,
+    metalness: 1,
+    roughness: 0.18,
+    envMapIntensity: 1.5,
+    emissive: 0x664400,
+  });
+  const lootPlaceholderGeo = new THREE.OctahedronGeometry(0.16, 0);
+  const lootPlaceholderMat = new THREE.MeshStandardMaterial({
+    color: 0x8ab4c8,
+    metalness: 0.55,
     roughness: 0.35,
-    emissive: 0x553300,
+    emissive: 0x224466,
+    emissiveIntensity: 0.8,
   });
 
   function resize(): void {
@@ -170,6 +181,23 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
     return h;
   }
 
+  function clearLootPlaceholder(dropId: string): void {
+    const ph = lootPlaceholders.get(dropId);
+    if (!ph) return;
+    scene.remove(ph);
+    lootPlaceholders.delete(dropId);
+  }
+
+  function ensureLootPlaceholder(dropId: string): THREE.Mesh {
+    let m = lootPlaceholders.get(dropId);
+    if (!m) {
+      m = new THREE.Mesh(lootPlaceholderGeo, lootPlaceholderMat);
+      scene.add(m);
+      lootPlaceholders.set(dropId, m);
+    }
+    return m;
+  }
+
   function ensureLootMesh(dropId: string, itemId: string, build: () => THREE.Group): THREE.Group {
     let m = lootMeshes.get(dropId);
     if (m && lootItemId.get(dropId) !== itemId) {
@@ -180,104 +208,26 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
     }
     if (!m) {
       m = build();
+      // Sin sombras: barato; el hitch venía de mesh+luz en el frame del kill
       m.traverse((o) => {
-        if (o instanceof THREE.Mesh) o.castShadow = true;
+        if (o instanceof THREE.Mesh) {
+          o.castShadow = false;
+          o.receiveShadow = false;
+        }
       });
       scene.add(m);
       lootMeshes.set(dropId, m);
       lootItemId.set(dropId, itemId);
+      clearLootPlaceholder(dropId);
     }
     return m;
   }
 
-  function replaceGripChild(
-    parent: THREE.Group,
-    prev: THREE.Group,
-    next: THREE.Group,
-  ): THREE.Group {
-    parent.remove(prev);
-    disposeObject3D(prev);
-    parent.add(next);
-    return next;
-  }
-
   function syncEquippedVisuals(world: WorldState): void {
-    const w = world.equipment.weapon;
-    const o = world.equipment.offhand;
-    const h = world.equipment.helmet;
-    const a = world.equipment.armor;
-    const belt = world.equipment.belt;
-    const b = world.equipment.boots;
-    const key = `${w?.id ?? ""}|${o?.id ?? ""}|${h?.id ?? ""}|${a?.id ?? ""}|${belt?.id ?? ""}|${b?.id ?? ""}`;
+    const key = equipKey(world.equipment);
     if (key === equippedKey) return;
     equippedKey = key;
-
-    // -------------------------------------------------------------------------
-    // OFFSET FINO DEL MESH respecto al ancla (loadHero.ts → *Grip).
-    // position / rotation / scale = ajuste visual del ítem ya colgado del hueso.
-    // Anclas: handGrip, offhandGrip, headGrip, torsoGrip, beltGrip, bootGripL/R
-    // -------------------------------------------------------------------------
-
-    // ARMA (espada / hacha / arrojadiza) → hero.handGrip
-    if (w && (w.kind === "sword" || w.kind === "axe" || w.kind === "throw")) {
-      const mesh = buildItemMesh(w);
-      mesh.scale.setScalar(w.kind === "throw" ? 0.9 : 1.15);
-      mesh.position.set(0.15, 0.05, 0);
-      mesh.rotation.set(0, 0, 0);
-      playerSword = replaceGripChild(hero.handGrip, playerSword, mesh);
-    } else {
-      playerSword = replaceGripChild(hero.handGrip, playerSword, new THREE.Group());
-    }
-
-    // ESCUDO → hero.offhandGrip
-    if (o?.kind === "shield") {
-      const mesh = buildItemMesh(o);
-      mesh.scale.setScalar(1.25);
-      mesh.position.set(0, 0, 0.06);
-      mesh.rotation.set(0, 0, 0);
-      playerShield = replaceGripChild(hero.offhandGrip, playerShield, mesh);
-    } else {
-      playerShield = replaceGripChild(hero.offhandGrip, playerShield, new THREE.Group());
-    }
-
-    // CASCO → hero.headGrip
-    if (h?.kind === "helmet") {
-      const mesh = buildItemMesh(h);
-      mesh.scale.setScalar(1.35);
-      mesh.position.set(0, 0.1, 0.02);
-      mesh.rotation.set(0, 0, 0);
-      playerHelmet = replaceGripChild(hero.headGrip, playerHelmet, mesh);
-    } else {
-      playerHelmet = replaceGripChild(hero.headGrip, playerHelmet, new THREE.Group());
-    }
-
-    // ARMADURA → hero.torsoGrip
-    if (a?.kind === "armor") {
-      const mesh = buildWornArmorMesh(a.params as ArmorParams);
-      mesh.position.set(0, 0, 0);
-      playerArmor = replaceGripChild(hero.torsoGrip, playerArmor, mesh);
-    } else {
-      playerArmor = replaceGripChild(hero.torsoGrip, playerArmor, new THREE.Group());
-    }
-
-    // CINTURÓN → hero.beltGrip
-    if (belt?.kind === "belt") {
-      const mesh = buildWornBeltMesh(belt.params as BeltParams);
-      mesh.position.set(0, 0, 0);
-      playerBelt = replaceGripChild(hero.beltGrip, playerBelt, mesh);
-    } else {
-      playerBelt = replaceGripChild(hero.beltGrip, playerBelt, new THREE.Group());
-    }
-
-    // BOTAS → hero.bootGripL / bootGripR
-    if (b?.kind === "boots") {
-      const params = b.params as BootsParams;
-      playerBootL = replaceGripChild(hero.bootGripL, playerBootL, buildWornBootMesh(params));
-      playerBootR = replaceGripChild(hero.bootGripR, playerBootR, buildWornBootMesh(params));
-    } else {
-      playerBootL = replaceGripChild(hero.bootGripL, playerBootL, new THREE.Group());
-      playerBootR = replaceGripChild(hero.bootGripR, playerBootR, new THREE.Group());
-    }
+    equipMeshes = attachEquippedVisuals(hero, equipMeshes, world.equipment);
   }
 
   function sync(world: WorldState): void {
@@ -294,20 +244,41 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
 
     syncEquippedVisuals(world);
 
-    const swinging = p.attackSwing > 0;
+    const swinging = p.attackSwing > 0 && !world.blocking;
     if (swinging) {
-      const u = 1 - Math.min(1, p.attackSwing / SLASH_DURATION);
-      hero.applySlash(u, world.slashVariant);
+      const u = 1 - Math.min(1, p.attackSwing / Math.max(0.05, world.attackSwingMax || SLASH_DURATION));
+      hero.applyCombat(u, world.combatAnim, false);
+      const showArc =
+        world.combatAnim === "slash" ||
+        world.combatAnim === "dualR" ||
+        world.combatAnim === "dualL" ||
+        world.combatAnim === "twohand";
       const mid = u > 0.28 && u < 0.62 ? 1 : 0.2;
-      swingMesh.visible = u > 0.25 && u < 0.68;
+      swingMesh.visible = showArc && u > 0.25 && u < 0.68;
       swingMat.opacity = 0.04 + mid * 0.16 * Math.sin(Math.min(1, Math.max(0, (u - 0.28) / 0.28)) * Math.PI);
       swingMesh.scale.setScalar(0.9 + u * 0.12);
       swingMesh.rotation.z = -0.25 + u * 0.7;
       if (u > 0.28 && u < 0.45) shake = 0.12;
+    } else if (world.blocking) {
+      hero.applyCombat(1, "block", true);
+      swingMesh.visible = false;
     } else {
       swingMesh.visible = false;
     }
-    hero.update(dt, p.walkPhase, p.moving, swinging, p.running);
+    const wpn = world.equipment.weapon;
+    const off = world.equipment.offhand;
+    const stance = world.blocking
+      ? "block"
+      : wpn?.kind === "bow"
+        ? "bow"
+        : wpn?.kind === "crossbow"
+          ? "crossbow"
+          : isTwoHanded(wpn)
+            ? "twohand"
+            : off?.kind === "shield"
+              ? "block"
+              : "onehand";
+    hero.update(dt, p.walkPhase, p.moving, swinging || world.blocking, p.running, stance);
 
     shake = Math.max(0, shake - 0.016);
     const camTarget = new THREE.Vector3(p.pos.x, 0.9, p.pos.y);
@@ -319,19 +290,25 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
     camera.position.lerp(camPos, 0.14);
     camera.lookAt(camTarget);
 
-    const aliveIds = new Set<string>();
+    const presentIds = new Set<string>();
     for (const ai of world.ais) {
-      aliveIds.add(ai.id);
+      const show = ai.alive || ai.deathTimer > 0;
+      if (!show) continue;
+      presentIds.add(ai.id);
       const body = ensureAi(ai.id);
-      body.root.visible = ai.alive;
+      body.root.visible = true;
       body.root.position.x = ai.pos.x;
       body.root.position.z = ai.pos.y;
       body.root.rotation.y = ai.facing + Math.PI;
-      const swingU = ai.attackSwing > 0 ? 1 - ai.attackSwing / AI_SWING : 0;
-      body.update(dt, ai.walkPhase, ai.moving, swingU, ai.hurtTimer > 0);
+      const swingU = ai.alive && ai.attackSwing > 0 ? 1 - ai.attackSwing / AI_SWING : 0;
+      const deathAge = ai.alive ? 0 : AI_CORPSE_TIME - ai.deathTimer;
+      const deathU = ai.alive ? 0 : Math.min(1, deathAge / AI_DEATH_ANIM);
+      const fade =
+        ai.alive || ai.deathTimer > 1.15 ? 1 : Math.max(0, ai.deathTimer / 1.15);
+      body.update(dt, ai.walkPhase, ai.moving && ai.alive, swingU, ai.hurtTimer > 0, deathU, fade);
     }
     for (const [id, body] of aiMeshes) {
-      if (!aliveIds.has(id)) {
+      if (!presentIds.has(id)) {
         scene.remove(body.root);
         body.dispose();
         aiMeshes.delete(id);
@@ -339,15 +316,25 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
     }
 
     const lootIds = new Set<string>();
+    let lootBuilds = LOOT_BUILDS_PER_FRAME;
     for (const drop of world.loot) {
       lootIds.add(drop.id);
-      const mesh = ensureLootMesh(drop.id, drop.item.id, () => buildItemMesh(drop.item));
-      mesh.position.set(
-        drop.pos.x,
-        0.35 + Math.sin(world.time * 3 + drop.pos.x) * 0.06,
-        drop.pos.y,
-      );
-      mesh.rotation.y = world.time * 1.4;
+      const y = 0.35 + Math.sin(world.time * 3 + drop.pos.x) * 0.06;
+      let mesh = lootMeshes.get(drop.id);
+      if (!mesh && lootBuilds > 0) {
+        mesh = ensureLootMesh(drop.id, drop.item.id, () =>
+          buildItemMesh(drop.item, { lite: true }),
+        );
+        lootBuilds -= 1;
+      }
+      if (mesh) {
+        mesh.position.set(drop.pos.x, y, drop.pos.y);
+        mesh.rotation.y = world.time * 1.4;
+      } else {
+        const ph = ensureLootPlaceholder(drop.id);
+        ph.position.set(drop.pos.x, y, drop.pos.y);
+        ph.rotation.y = world.time * 2.2;
+      }
     }
     for (const [id, mesh] of lootMeshes) {
       if (!lootIds.has(id)) {
@@ -355,7 +342,11 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
         disposeObject3D(mesh);
         lootMeshes.delete(id);
         lootItemId.delete(id);
+        clearLootPlaceholder(id);
       }
+    }
+    for (const id of [...lootPlaceholders.keys()]) {
+      if (!lootIds.has(id)) clearLootPlaceholder(id);
     }
 
     const coinIds = new Set<string>();
@@ -381,6 +372,31 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
       }
     }
 
+    const projIds = new Set<string>();
+    for (const proj of world.projectiles) {
+      projIds.add(proj.id);
+      let mesh = projectileMeshes.get(proj.id);
+      if (!mesh) {
+        mesh = buildProjectileMesh(proj);
+        mesh.traverse((o) => {
+          if (o instanceof THREE.Mesh) o.castShadow = true;
+        });
+        scene.add(mesh);
+        projectileMeshes.set(proj.id, mesh);
+      }
+      const yaw = Math.atan2(proj.dirX, proj.dirY);
+      mesh.position.set(proj.pos.x, 0.95, proj.pos.y);
+      mesh.rotation.set(0.05, yaw, proj.spin);
+      mesh.scale.setScalar(1.15);
+    }
+    for (const [id, mesh] of projectileMeshes) {
+      if (!projIds.has(id)) {
+        scene.remove(mesh);
+        disposeObject3D(mesh);
+        projectileMeshes.delete(id);
+      }
+    }
+
     renderer.render(scene, camera);
   }
 
@@ -390,5 +406,18 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
   }
 
   resize();
-  return { renderer, scene, camera, playerMesh, playerSword, aiMeshes, lootMeshes, resize, sync, dispose };
+  return {
+    renderer,
+    scene,
+    camera,
+    playerMesh,
+    get playerSword() {
+      return equipMeshes.weapon;
+    },
+    aiMeshes,
+    lootMeshes,
+    resize,
+    sync,
+    dispose,
+  };
 }

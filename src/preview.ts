@@ -1,8 +1,26 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+import {
+  attachEquippedVisuals,
+  emptyEquipMeshes,
+  mountEquipMeshes,
+  type EquipMeshes,
+} from "./render/equipAttach";
 import { createHero } from "./render/loadHero";
-import { buildSwordMesh } from "./render/swordMesh";
-import { createSwordItem } from "./shared/swords";
+import {
+  createArmorItem,
+  createAxeItem,
+  createBeltItem,
+  createBootsItem,
+  createBowItem,
+  createCrossbowItem,
+  createHelmetItem,
+  createShieldItem,
+  createSmallAxeItem,
+  createThrowItem,
+} from "./shared/gear";
+import { createDaggerItem, createSwordItem, randomSwordSeed } from "./shared/swords";
+import type { Equipment, ItemInstance } from "./shared/types";
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -31,9 +49,7 @@ const sun = new THREE.DirectionalLight(0xffe2b0, 1.35);
 sun.position.set(2, 6, 5);
 sun.castShadow = true;
 scene.add(sun);
-const fill = new THREE.DirectionalLight(0x8899aa, 0.65);
-fill.position.set(-4, 2, -2);
-scene.add(fill);
+scene.add(new THREE.DirectionalLight(0x8899aa, 0.65).translateX(-4).translateY(2).translateZ(-2));
 const rim = new THREE.DirectionalLight(0xffe8c8, 0.35);
 rim.position.set(0, 3, -5);
 scene.add(rim);
@@ -49,11 +65,7 @@ const grid = new THREE.GridHelper(8, 16, 0x6a5a40, 0x3a3020);
 grid.position.y = 0.01;
 scene.add(grid);
 
-const status = document.createElement("div");
-status.style.cssText =
-  "position:absolute;left:12px;bottom:12px;color:#c4a574;font:12px Georgia,serif;z-index:2";
-status.textContent = "Cargando modelo…";
-document.body.appendChild(status);
+const status = document.getElementById("status")!;
 
 let walkOn = false;
 let walkPhase = 0;
@@ -62,24 +74,18 @@ let autoSpin = false;
 const STRIDE = 0.72;
 const WALK_SPEED = 3.1;
 
-const btnWalk = document.getElementById("btn-walk")!;
-const btnSlash = document.getElementById("btn-slash")!;
-const btnSpin = document.getElementById("btn-spin")!;
-const chkWire = document.getElementById("chk-wire") as HTMLInputElement;
-
-btnWalk.textContent = "Caminar: OFF";
-btnWalk.addEventListener("click", () => {
+document.getElementById("btn-walk")!.addEventListener("click", (e) => {
   walkOn = !walkOn;
-  btnWalk.textContent = `Caminar: ${walkOn ? "ON" : "OFF"}`;
+  (e.currentTarget as HTMLButtonElement).textContent = `Caminar: ${walkOn ? "ON" : "OFF"}`;
 });
-btnSlash.addEventListener("click", () => {
+document.getElementById("btn-slash")!.addEventListener("click", () => {
   slashT = 0.42;
 });
-btnSpin.addEventListener("click", () => {
+document.getElementById("btn-spin")!.addEventListener("click", (e) => {
   autoSpin = !autoSpin;
   controls.autoRotate = autoSpin;
   controls.autoRotateSpeed = 1.6;
-  btnSpin.textContent = `Auto-rotar: ${autoSpin ? "ON" : "OFF"}`;
+  (e.currentTarget as HTMLButtonElement).textContent = `Auto-rotar: ${autoSpin ? "ON" : "OFF"}`;
 });
 
 window.addEventListener("resize", () => {
@@ -92,20 +98,104 @@ let hero: Awaited<ReturnType<typeof createHero>>;
 try {
   hero = await createHero();
 } catch (e) {
-  status.textContent = `Error cargando humano: ${e instanceof Error ? e.message : String(e)}`;
-  console.error(e);
+  status.textContent = `Error: ${e instanceof Error ? e.message : String(e)}`;
   throw e;
 }
 scene.add(hero.root);
-status.textContent = "Humano CC0 Quaternius (skinned) — no procedural";
+// Debug: órbita desde DevTools / agent
 
-const swordItem = createSwordItem(1001);
-const sword = buildSwordMesh(swordItem.params as import("./shared/types").SwordParams);
-sword.scale.setScalar(0.55);
-sword.position.set(0, 0, 0);
-sword.rotation.set(0, 0, 0);
-hero.handGrip.add(sword);
+const equipment: Pick<Equipment, "weapon" | "offhand" | "helmet" | "armor" | "belt" | "boots"> = {
+  weapon: createSwordItem(1001),
+  offhand: null,
+  helmet: null,
+  armor: null,
+  belt: null,
+  boots: null,
+};
 
+let equipMeshes: EquipMeshes = emptyEquipMeshes();
+mountEquipMeshes(hero, equipMeshes);
+
+function rebuild(): void {
+  equipMeshes = attachEquippedVisuals(hero, equipMeshes, equipment);
+  const parts = Object.values(equipment)
+    .filter(Boolean)
+    .map((i) => (i as ItemInstance).name);
+  status.textContent = parts.length ? parts.join(" · ") : "Sin equipo — offsets en equipAttach.ts";
+}
+
+rebuild();
+
+(
+  window as unknown as {
+    __fwPreview: {
+      camera: THREE.PerspectiveCamera;
+      controls: OrbitControls;
+      hero: typeof hero;
+    };
+  }
+).__fwPreview = { camera, controls, hero };
+
+function makeItem(kind: string): ItemInstance {
+  const seed = randomSwordSeed();
+  switch (kind) {
+    case "sword":
+      return createSwordItem(seed);
+    case "dagger":
+    case "daggerOff":
+      return createDaggerItem(seed);
+    case "axe":
+      return createAxeItem(seed, false);
+    case "smallAxe":
+      return createSmallAxeItem(seed);
+    case "bow":
+      return createBowItem(seed);
+    case "crossbow":
+      return createCrossbowItem(seed);
+    case "throw":
+      return createThrowItem(seed);
+    case "shield":
+      return createShieldItem(seed);
+    case "helmet":
+      return createHelmetItem(seed);
+    case "armor":
+      return createArmorItem(seed);
+    case "belt":
+      return createBeltItem(seed);
+    case "boots":
+      return createBootsItem(seed);
+    default:
+      return createSwordItem(seed);
+  }
+}
+
+document.getElementById("ui")!.addEventListener("click", (e) => {
+  const btn = (e.target as HTMLElement).closest("button") as HTMLButtonElement | null;
+  if (!btn || btn.id.startsWith("btn-")) return;
+  const clear = btn.dataset.clear as keyof typeof equipment | undefined;
+  if (clear) {
+    equipment[clear] = null;
+    rebuild();
+    return;
+  }
+  const kind = btn.dataset.kind;
+  if (!kind) return;
+  const item = makeItem(kind);
+  if (kind === "daggerOff" || item.equipSlot === "offhand") equipment.offhand = item;
+  else {
+    const slot = item.equipSlot as keyof typeof equipment;
+    if (slot in equipment) equipment[slot] = item;
+  }
+  rebuild();
+});
+
+document.getElementById("btn-clear-all")!.addEventListener("click", (e) => {
+  e.stopPropagation();
+  for (const k of Object.keys(equipment) as (keyof typeof equipment)[]) equipment[k] = null;
+  rebuild();
+});
+
+const chkWire = document.getElementById("chk-wire") as HTMLInputElement;
 chkWire.addEventListener("change", () => {
   hero.root.traverse((o) => {
     if (o instanceof THREE.Mesh) {
@@ -121,7 +211,6 @@ let last = performance.now();
 function frame(now: number): void {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
-
   const swinging = slashT > 0;
   if (swinging) {
     slashT = Math.max(0, slashT - dt);
@@ -129,7 +218,6 @@ function frame(now: number): void {
   } else if (walkOn) {
     walkPhase += ((WALK_SPEED * dt) / STRIDE) * Math.PI;
   }
-
   hero.update(dt, walkPhase, walkOn && !swinging, swinging);
   controls.update();
   renderer.render(scene, camera);

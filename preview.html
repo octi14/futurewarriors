@@ -12,16 +12,23 @@
         position: absolute; left: 12px; top: 12px; z-index: 2;
         font-family: Georgia, "Palatino Linotype", serif; color: #e8dcc4;
         background: rgba(22,16,10,.88); border: 1px solid rgba(160,120,70,.45);
-        padding: 12px 14px; border-radius: 4px; font-size: 13px; line-height: 1.5;
-        max-width: 260px;
+        padding: 12px 14px; border-radius: 4px; font-size: 13px; line-height: 1.45;
+        width: min(300px, calc(100vw - 24px));
+        max-height: calc(100vh - 24px);
+        overflow: auto;
       }
       #ui button, #ui label {
-        display: block; width: 100%; margin-top: 8px; padding: 6px 8px;
+        display: inline-block; margin: 3px 3px 0 0; padding: 5px 8px;
         background: #2a2016; color: #e8dcc4; border: 1px solid rgba(160,120,70,.4);
-        border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 12px;
+        border-radius: 3px; cursor: pointer; font-family: inherit; font-size: 11px;
       }
       #ui button:hover { background: #3a2c1c; }
+      #ui button.on { border-color: #c4a574; background: #3d2e1c; }
+      #ui button.clear { border-color: rgba(180,80,60,.45); color: #e8b0a0; }
+      #ui .row { margin-top: 8px; }
+      #ui .lbl { opacity: .7; font-size: 11px; margin-bottom: 2px; }
       #ui .hint { opacity: .7; font-size: 11px; margin-top: 10px; }
+      #ui .sep { height: 1px; background: rgba(160,120,70,.25); margin: 10px 0; }
       a { color: #c4a574; }
     </style>
   </head>
@@ -29,11 +36,52 @@
     <div id="ui">
       <b>Preview personaje</b>
       <div class="hint">Arrastrá para orbitar · rueda zoom</div>
-      <button type="button" id="btn-walk">Caminar: OFF</button>
-      <button type="button" id="btn-slash">Espadazo</button>
-      <button type="button" id="btn-spin">Auto-rotar: OFF</button>
+      <div class="row">
+        <button type="button" id="btn-walk">Caminar: OFF</button>
+        <button type="button" id="btn-slash">Espadazo</button>
+        <button type="button" id="btn-spin">Auto-rotar: OFF</button>
+      </div>
       <label><input type="checkbox" id="chk-wire" /> Wireframe</label>
-      <div class="hint"><a href="/">← Volver al juego</a></div>
+
+      <div class="sep"></div>
+      <div class="lbl">Arma (🎲 = nuevo random)</div>
+      <div class="row" id="gear-weapon">
+        <button type="button" data-kind="sword">Espada</button>
+        <button type="button" data-kind="dagger">Daga</button>
+        <button type="button" data-kind="axe">Hacha</button>
+        <button type="button" data-kind="smallAxe">H.chica</button>
+        <button type="button" data-kind="bow">Arco</button>
+        <button type="button" data-kind="crossbow">Ballesta</button>
+        <button type="button" data-kind="throw">Arrojable</button>
+        <button type="button" class="clear" data-clear="weapon">✕</button>
+      </div>
+
+      <div class="lbl">Offhand</div>
+      <div class="row" id="gear-offhand">
+        <button type="button" data-kind="shield">Escudo</button>
+        <button type="button" data-kind="daggerOff">Daga</button>
+        <button type="button" class="clear" data-clear="offhand">✕</button>
+      </div>
+
+      <div class="lbl">Casco / Armadura / Cinto / Botas</div>
+      <div class="row">
+        <button type="button" data-kind="helmet">Casco</button>
+        <button type="button" class="clear" data-clear="helmet">✕</button>
+        <button type="button" data-kind="armor">Armadura</button>
+        <button type="button" class="clear" data-clear="armor">✕</button>
+      </div>
+      <div class="row">
+        <button type="button" data-kind="belt">Cinturón</button>
+        <button type="button" class="clear" data-clear="belt">✕</button>
+        <button type="button" data-kind="boots">Botas</button>
+        <button type="button" class="clear" data-clear="boots">✕</button>
+      </div>
+      <div class="row">
+        <button type="button" class="clear" id="btn-clear-all">Limpiar todo</button>
+      </div>
+
+      <div class="hint" id="status">Cargando…</div>
+      <div class="hint"><a href="/">← Volver al juego</a> · abrí <code>/preview.html</code></div>
     </div>
     <script type="module" src="/src/preview.ts"></script>
   </body>

@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
+import type { CombatAnimKind } from "../shared/types";
 
 export type HeroHandle = {
   root: THREE.Group;
@@ -20,8 +21,14 @@ export type HeroHandle = {
     moving: boolean,
     swinging: boolean,
     running?: boolean,
+    stance?: CombatAnimKind | "idle" | "onehand",
   ) => void;
-  /** u 0..1 progreso; variant elige clip/estilo de espadazo */
+  /**
+   * Animación de combate.
+   * u 0..1 progreso del swing; anim = throw/dual/bow/…; blocking = escudo.
+   */
+  applyCombat: (u: number, anim: CombatAnimKind, blocking?: boolean) => void;
+  /** @deprecated usar applyCombat */
   applySlash: (u: number, variant?: number) => void;
 };
 
@@ -77,10 +84,15 @@ export async function createHero(): Promise<HeroHandle> {
     findObj(model, ["LowerArmL"]) ??
     model;
   const headBone = findObj(model, ["Head"]) ?? model;
-  const torsoBone = findObj(model, ["Torso", "Abdomen", "Body"]) ?? model;
-  const beltBone = findObj(model, ["Abdomen", "Hips", "Torso"]) ?? model;
+  // OJO: traverse encuentra Body antes que Torso — pedir Torso solo
+  const torsoBone = findObj(model, ["Torso"]) ?? findObj(model, ["Abdomen"]) ?? model;
+  const beltBone = findObj(model, ["Abdomen"]) ?? findObj(model, ["Hips"]) ?? model;
   const footL = findObj(model, ["FootL"]) ?? model;
   const footR = findObj(model, ["FootR"]) ?? model;
+  const upperArmR = findObj(model, ["UpperArmR"]) as THREE.Object3D | null;
+  const upperArmL = findObj(model, ["UpperArmL"]) as THREE.Object3D | null;
+  const lowerArmR = findObj(model, ["LowerArmR"]) as THREE.Object3D | null;
+  const lowerArmL = findObj(model, ["LowerArmL"]) as THREE.Object3D | null;
 
   // ---------------------------------------------------------------------------
   // ANCLAJES DE EQUIPO (ejes LOCALES del hueso). Editá acá el pivot de cada slot.
@@ -88,10 +100,12 @@ export async function createHero(): Promise<HeroHandle> {
   // El mesh del ítem tiene OTRO offset fino en scene.ts → syncEquippedVisuals.
   // ---------------------------------------------------------------------------
 
-  /** Arma (mano derecha) — PalmR / MiddleHandR */
+  /**
+   * Arma — PalmR. Tip se orienta en equipAttach (Palm −X ≈ cara/+Z mundo).
+   */
   const handGrip = new THREE.Group();
-  handGrip.position.set(0, -0.04, 0.03); // x lateral, y a lo largo de dedos, z palma
-  handGrip.rotation.set(0.2, 0, Math.PI / 2);
+  handGrip.position.set(0, 0.02, 0.02);
+  handGrip.rotation.set(0, 0, 0);
   palmR.add(handGrip);
 
   /** Escudo / offhand (mano izquierda) — PalmL */
@@ -106,15 +120,18 @@ export async function createHero(): Promise<HeroHandle> {
   headGrip.rotation.set(0, 0, 0);
   headBone.add(headGrip);
 
-  /** Armadura — Torso */
+  /**
+   * Armadura — hueso Torso (scale mundo≈0.368; ARMOR_FIT ya está en espacio hueso).
+   * Mundo@1.78m: cuello≈1.49, hombros≈1.40 x±0.17, abdomen≈0.86, grip≈1.25.
+   */
   const torsoGrip = new THREE.Group();
-  torsoGrip.position.set(0, 0.05, 0.02);
+  torsoGrip.position.set(0, 0.28, 0.03);
   torsoGrip.rotation.set(0, 0, 0);
   torsoBone.add(torsoGrip);
 
-  /** Cinturón — Abdomen / Hips */
+  /** Cinturón — hueso Abdomen/Hips. */
   const beltGrip = new THREE.Group();
-  beltGrip.position.set(0, -0.02, 0.01);
+  beltGrip.position.set(0, 0.08, 0.02);
   beltGrip.rotation.set(0, 0, 0);
   beltBone.add(beltGrip);
 
@@ -163,8 +180,19 @@ export async function createHero(): Promise<HeroHandle> {
   }
   mixer.update(1 / 30);
 
+  // Pose base de brazos tras primer sample del mixer (overlays suman deltas)
+  const armRest = {
+    uR: upperArmR ? upperArmR.rotation.clone() : new THREE.Euler(),
+    uL: upperArmL ? upperArmL.rotation.clone() : new THREE.Euler(),
+    lR: lowerArmR ? lowerArmR.rotation.clone() : new THREE.Euler(),
+    lL: lowerArmL ? lowerArmL.rotation.clone() : new THREE.Euler(),
+  };
+
   const slashVariants = [slashA, slashB, slashC];
   let activeSlash = slashA;
+  let lastAnim: CombatAnimKind = "slash";
+  let lastU = 0;
+  let lastBlocking = false;
 
   const actions: Record<string, THREE.AnimationAction> = {
     idle,
@@ -190,13 +218,11 @@ export async function createHero(): Promise<HeroHandle> {
     for (const m of mats) m.emissive.setHex(hex);
   }
 
-  function applySlash(u: number, variant = 0): void {
-    const idx = ((variant % slashVariants.length) + slashVariants.length) % slashVariants.length;
-    const next = slashVariants[idx];
+  function scrubClip(action: THREE.AnimationAction, u: number, reverse = false): void {
     for (const s of slashVariants) {
-      if (s !== next) s.weight = 0;
+      if (s !== action) s.weight = 0;
     }
-    activeSlash = next;
+    activeSlash = action;
     activeSlash.enabled = true;
     activeSlash.paused = true;
     activeSlash.weight = 1;
@@ -204,10 +230,119 @@ export async function createHero(): Promise<HeroHandle> {
     walk.weight = 0;
     run.weight = 0;
     const dur = Math.max(0.01, activeSlash.getClip().duration);
-    // Variante 2 = mismo SwordSlash pero recorrido al revés (otro “ángulo” visual)
-    const t = idx === 2 ? 1 - Math.min(0.999, u) : Math.min(0.999, u);
+    const t = reverse ? 1 - Math.min(0.999, u) : Math.min(0.999, u);
     activeSlash.time = t * dur;
     activeSlash.play();
+  }
+
+  /** Brazo izq suelto (1H sin escudo). Evita pose “escudo” del clip SwordSlash. */
+  function relaxLeftArm(): void {
+    if (!upperArmL) return;
+    upperArmL.rotation.x = armRest.uL.x;
+    upperArmL.rotation.y = armRest.uL.y;
+    upperArmL.rotation.z = armRest.uL.z;
+    if (lowerArmL) {
+      lowerArmL.rotation.x = armRest.lL.x;
+      lowerArmL.rotation.y = armRest.lL.y;
+      lowerArmL.rotation.z = armRest.lL.z;
+    }
+  }
+
+  /**
+   * Overlay procedural en brazos (tras el mixer).
+   * AJUSTE MANUAL: números de rotación abajo = pose de cada estilo.
+   */
+  function applyArmOverlay(anim: CombatAnimKind | "idle" | "onehand", u: number, blocking: boolean): void {
+    if (!upperArmR || !upperArmL) return;
+    const pulse = Math.sin(Math.min(1, u) * Math.PI);
+
+    if (blocking || anim === "block") {
+      // Escudo adelante
+      upperArmL.rotation.x = armRest.uL.x - 1.1;
+      upperArmL.rotation.y = armRest.uL.y + 0.35;
+      if (lowerArmL) lowerArmL.rotation.x = armRest.lL.x - 0.4;
+      upperArmR.rotation.x = armRest.uR.x - 0.35;
+      return;
+    }
+
+    if (anim === "onehand" || anim === "slash") {
+      relaxLeftArm();
+      return;
+    }
+
+    if (anim === "throw") {
+      relaxLeftArm();
+      const wind = u < 0.35 ? u / 0.35 : 1 - (u - 0.35) / 0.65;
+      upperArmR.rotation.x = armRest.uR.x - 1.6 * wind + pulse * 0.9;
+      upperArmR.rotation.z = armRest.uR.z + 0.5 * wind;
+      if (lowerArmR) lowerArmR.rotation.x = armRest.lR.x - 0.6 * wind;
+      return;
+    }
+
+    if (anim === "bow") {
+      upperArmL.rotation.x = armRest.uL.x - 0.85;
+      upperArmL.rotation.y = armRest.uL.y + 0.25;
+      const draw = Math.min(1, u / 0.45);
+      const release = u > 0.45 ? Math.min(1, (u - 0.45) / 0.25) : 0;
+      upperArmR.rotation.x = armRest.uR.x - 1.2 * draw + release * 0.9;
+      upperArmR.rotation.y = armRest.uR.y - 0.4 * draw;
+      if (lowerArmR) lowerArmR.rotation.x = armRest.lR.x - 0.7 * draw;
+      return;
+    }
+
+    if (anim === "crossbow") {
+      upperArmR.rotation.x = armRest.uR.x - 0.95;
+      upperArmL.rotation.x = armRest.uL.x - 0.9;
+      upperArmL.rotation.y = armRest.uL.y + 0.2;
+      if (u > 0.4 && u < 0.65) {
+        upperArmR.rotation.x += 0.25;
+        upperArmL.rotation.x += 0.2;
+      }
+      return;
+    }
+
+    if (anim === "dualL") {
+      upperArmL.rotation.x = armRest.uL.x - 1.4 * pulse;
+      upperArmL.rotation.y = armRest.uL.y - 0.35 * pulse;
+      if (lowerArmL) lowerArmL.rotation.x = armRest.lL.x - 0.5 * pulse;
+      return;
+    }
+
+    if (anim === "dualR") {
+      relaxLeftArm();
+      upperArmR.rotation.x = armRest.uR.x - 0.3 * pulse;
+      return;
+    }
+
+    if (anim === "twohand") {
+      // Empuñadura a dos manos: izq cerca del arma
+      const hold = 0.55 + 0.45 * (1 - pulse);
+      upperArmL.rotation.x = armRest.uL.x - 0.75 * hold;
+      upperArmL.rotation.y = armRest.uL.y + 0.55 * hold;
+      upperArmL.rotation.z = armRest.uL.z - 0.25 * hold;
+      if (lowerArmL) lowerArmL.rotation.x = armRest.lL.x - 0.35 * hold;
+    }
+  }
+
+  function applyCombat(u: number, anim: CombatAnimKind, blocking = false): void {
+    lastAnim = anim;
+    lastU = u;
+    lastBlocking = blocking;
+    if (blocking || anim === "block") {
+      for (const s of slashVariants) s.weight = 0;
+      idle.weight = 0.35;
+      return;
+    }
+    // Clips: Punch para throw/dualL/bow; SwordSlash para el resto
+    const usePunch =
+      anim === "throw" || anim === "dualL" || anim === "bow" || anim === "crossbow";
+    const clip = usePunch ? slashB : anim === "twohand" ? slashA : u > 0.5 ? slashC : slashA;
+    const reverse = anim === "dualR" && clip === slashC;
+    scrubClip(clip, u, reverse);
+  }
+
+  function applySlash(u: number, variant = 0): void {
+    applyCombat(u, variant === 1 ? "dualL" : "slash", false);
   }
 
   function update(
@@ -216,8 +351,9 @@ export async function createHero(): Promise<HeroHandle> {
     moving: boolean,
     swinging: boolean,
     running = false,
+    stance: CombatAnimKind | "idle" | "onehand" = "idle",
   ): void {
-    if (!swinging) {
+    if (!swinging && !lastBlocking && stance !== "block") {
       for (const s of slashVariants) {
         s.weight = THREE.MathUtils.damp(s.weight, 0, 10, dt);
       }
@@ -231,6 +367,17 @@ export async function createHero(): Promise<HeroHandle> {
       run.paused = false;
     }
     mixer.update(dt);
+    // Overlay de brazos DESPUÉS del mixer
+    if (swinging || lastBlocking) {
+      applyArmOverlay(lastAnim, lastU, lastBlocking);
+    } else if (stance === "block") {
+      applyArmOverlay("block", 1, true);
+    } else if (stance === "twohand" || stance === "bow" || stance === "crossbow") {
+      applyArmOverlay(stance, 0.2, false);
+    } else if (stance === "onehand" && activeSlash.weight > 0.05) {
+      // Mientras muere el clip de slash, forzar brazo izq suelto (el clip lo deja “en escudo”)
+      applyArmOverlay("onehand", 0, false);
+    }
   }
 
   return {
@@ -246,6 +393,7 @@ export async function createHero(): Promise<HeroHandle> {
     bootGripR,
     setHurt,
     update,
+    applyCombat,
     applySlash,
   };
 }

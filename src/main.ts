@@ -6,6 +6,7 @@ import {
   dropFromEquip,
   equipFromBag,
   pickupNearest,
+  setBlocking,
   stepWorld,
   toggleCharacter,
   toggleInventory,
@@ -96,11 +97,19 @@ window.addEventListener("mousemove", (e) => {
   hasPointer = true;
 });
 window.addEventListener("mousedown", (e) => {
-  if (e.button !== 0) return;
   const t = e.target as HTMLElement;
   if (t.closest("#inv, #char, #help, #combat-hud")) return;
-  doAttack();
+  if (e.button === 0) doAttack();
+  if (e.button === 2) {
+    e.preventDefault();
+    setBlocking(world, true);
+  }
 });
+window.addEventListener("mouseup", (e) => {
+  if (e.button === 2) setBlocking(world, false);
+});
+window.addEventListener("contextmenu", (e) => e.preventDefault());
+window.addEventListener("blur", () => setBlocking(world, false));
 window.addEventListener("resize", () => render.resize());
 
 function readInput(): InputState {

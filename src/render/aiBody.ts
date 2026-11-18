@@ -8,6 +8,8 @@ export type AiBodyHandle = {
     moving: boolean,
     swingU: number,
     hurt: boolean,
+    deathU?: number,
+    fade?: number,
   ) => void;
   dispose: () => void;
 };
@@ -18,9 +20,11 @@ export function createAiBody(tint = 0x6e3b2e): AiBodyHandle {
   const skin = new THREE.MeshStandardMaterial({ color: tint, roughness: 0.92 });
   const dark = new THREE.MeshStandardMaterial({ color: 0x3a2418, roughness: 0.9 });
   const blade = new THREE.MeshStandardMaterial({
-    color: 0x9aa0a8,
-    metalness: 0.7,
-    roughness: 0.35,
+    color: 0xc4c8d0,
+    metalness: 0.95,
+    roughness: 0.12,
+    envMapIntensity: 1.4,
+    emissive: 0x222228,
   });
 
   const hips = new THREE.Group();
@@ -81,6 +85,10 @@ export function createAiBody(tint = 0x6e3b2e): AiBodyHandle {
   hipR.add(legR);
 
   const mats = [skin, dark, blade];
+  for (const m of mats) {
+    m.transparent = true;
+    m.opacity = 1;
+  }
 
   function update(
     _dt: number,
@@ -88,30 +96,55 @@ export function createAiBody(tint = 0x6e3b2e): AiBodyHandle {
     moving: boolean,
     swingU: number,
     hurt: boolean,
+    deathU = 0,
+    fade = 1,
   ): void {
-    const amp = moving && swingU <= 0 ? 0.55 : 0.05;
-    const s = Math.sin(walkPhase) * amp;
-    hipL.rotation.x = s;
-    hipR.rotation.x = -s;
-    shoulderL.rotation.x = -s * 0.7;
+    const dying = deathU > 0;
 
-    if (swingU > 0) {
-      // 0→1: windup atrás → estocada con puñal
-      const punch = Math.sin(Math.min(1, swingU) * Math.PI);
-      shoulderR.rotation.x = s * 0.2 - 1.55 * punch;
-      shoulderR.rotation.y = -0.45 * punch;
-      armR.rotation.x = -0.35 * punch;
-      dagger.rotation.x = -0.3 - 0.5 * punch;
+    if (dying) {
+      // Caída hacia atrás + colapso
+      const ease = 1 - Math.pow(1 - Math.min(1, deathU), 2);
+      hips.rotation.x = -ease * 1.45;
+      hips.rotation.z = ease * 0.35;
+      hips.position.y = 0.72 - ease * 0.42;
+      shoulderL.rotation.x = -0.2 - ease * 0.9;
+      shoulderR.rotation.x = -0.15 - ease * 1.1;
+      shoulderR.rotation.y = ease * 0.4;
+      hipL.rotation.x = ease * 0.55;
+      hipR.rotation.x = ease * 0.35;
+      armR.rotation.x = -ease * 0.4;
+      dagger.rotation.x = -0.3 - ease * 0.6;
     } else {
-      shoulderR.rotation.x = s * 0.5;
-      shoulderR.rotation.y = 0;
-      armR.rotation.x = 0;
-      dagger.rotation.x = -0.3;
+      hips.rotation.x = 0;
+      hips.rotation.z = 0;
+      hips.position.y = 0.72;
+
+      const amp = moving && swingU <= 0 ? 0.55 : 0.05;
+      const s = Math.sin(walkPhase) * amp;
+      hipL.rotation.x = s;
+      hipR.rotation.x = -s;
+      shoulderL.rotation.x = -s * 0.7;
+
+      if (swingU > 0) {
+        const punch = Math.sin(Math.min(1, swingU) * Math.PI);
+        shoulderR.rotation.x = s * 0.2 - 1.55 * punch;
+        shoulderR.rotation.y = -0.45 * punch;
+        armR.rotation.x = -0.35 * punch;
+        dagger.rotation.x = -0.3 - 0.5 * punch;
+      } else {
+        shoulderR.rotation.x = s * 0.5;
+        shoulderR.rotation.y = 0;
+        armR.rotation.x = 0;
+        dagger.rotation.x = -0.3;
+      }
     }
 
+    const op = Math.max(0, Math.min(1, fade));
     for (const m of mats) {
       if (m instanceof THREE.MeshStandardMaterial) {
-        m.emissive.setHex(hurt ? 0x551111 : 0x000000);
+        m.opacity = op;
+        m.transparent = op < 0.999;
+        m.emissive.setHex(hurt && !dying ? 0x551111 : dying ? 0x1a0808 : 0x000000);
       }
     }
   }
