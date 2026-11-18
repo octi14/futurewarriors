@@ -34,4 +34,4 @@ Mini mapa, 1 jugador, IA chase/attack, melee con stats de arma (reach/speed/dama
 4. Geo terrestre + densidad + banca cuando esté diseñada
 5. Escala CCU / sharding / LOD
 
-Ver plan completo en Cursor: `mmo_planeta_fases`.
+Ver plan completo: [docs/PLAN.md](./PLAN.md).
