@@ -1,36 +1,7 @@
-import type { ItemInstance, Rarity, SwordParams, SwordStats } from "./types";
+import { pickRarity, rarityMult, rngFromSeed } from "./rng";
+import type { ItemInstance, ItemStats, Rarity, SwordParams } from "./types";
 
-/** RNG determinista simple (mulberry32). */
-export function rngFromSeed(seed: number): () => number {
-  let t = seed >>> 0;
-  return () => {
-    t += 0x6d2b79f5;
-    let r = Math.imul(t ^ (t >>> 15), 1 | t);
-    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
-    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function pickRarity(r: () => number): Rarity {
-  const n = r();
-  if (n < 0.55) return "common";
-  if (n < 0.82) return "uncommon";
-  if (n < 0.95) return "rare";
-  return "epic";
-}
-
-function rarityMult(rarity: Rarity): number {
-  switch (rarity) {
-    case "common":
-      return 1;
-    case "uncommon":
-      return 1.15;
-    case "rare":
-      return 1.35;
-    case "epic":
-      return 1.6;
-  }
-}
+export { rngFromSeed, pickRarity, rarityMult } from "./rng";
 
 export function generateSwordParams(seed: number): SwordParams {
   const r = rngFromSeed(seed);
@@ -56,7 +27,7 @@ export function generateSwordParams(seed: number): SwordParams {
   };
 }
 
-export function statsFromParams(params: SwordParams): SwordStats {
+export function statsFromParams(params: SwordParams): ItemStats {
   const m = rarityMult(params.rarity);
   const length = params.bladeLength;
   const width = params.bladeWidth;
@@ -72,6 +43,9 @@ export function statsFromParams(params: SwordParams): SwordStats {
     reach: Math.round(reach * 100) / 100,
     attackSpeed: Math.round(attackSpeed * 100) / 100,
     windup: Math.round(windup * 100) / 100,
+    armor: 0,
+    moveSpeedMult: 1,
+    maxHpBonus: 0,
   };
 }
 
@@ -92,16 +66,22 @@ export function nameFromParams(params: SwordParams): string {
 
 let itemSeq = 1;
 
+export function nextItemId(seed: number): string {
+  return `item_${itemSeq++}_${seed}`;
+}
+
 export function createSwordItem(seed: number): ItemInstance {
   const params = generateSwordParams(seed);
   return {
-    id: `item_${itemSeq++}_${seed}`,
+    id: nextItemId(seed),
     kind: "sword",
     equipSlot: "weapon",
     seed,
     params,
     stats: statsFromParams(params),
     name: nameFromParams(params),
+    gridW: params.bladeType === "wide" ? 2 : 1,
+    gridH: 3,
   };
 }
 

@@ -341,9 +341,24 @@ Instrucciones operativas para el agente al codear:
 
 ---
 
+### Anotación post–Fase 0 (Cursor notebook — no es el autor del plan)
+
+> **Origen de esta nota:** la escribió **Cursor en la notebook** del autor (sesión de playtest / iteración local), **no** el Cursor de escritorio que redactó este plan maestro (`mmo_planeta_fases` / documento original).
+>
+> **Contexto (2026-11-18):** Fase 0 ya está implementada y el gametest inicial se considera aceptable. El autor **no cuenta aún con servidores ni capacidad de hostear** algo online; la parte de red de Fase 1 queda **muy adelante**.
+>
+> **Desglose práctico de Fase 1** (sin borrar la spec original de abajo):
+>
+> - **Fase 1a — offline / solo cliente:** engordar el prototipo local sin red: chunks/streaming en cliente, más familias de ítems con efecto gameplay, combate/feel, reglas de corpse/loot orientadas a PvP (aunque el PvP online llegue después). No requiere hostear nada.
+> - **Fase 1b — online local / autoritativo:** servidor Node + WS en localhost, 2+ clientes, persistencia Atlas, trade P2P, `sim/` en server. Puede hacerse en una sola máquina **sin** VPS; lo que sí queda bloqueado hoy es lo **siempre-on** (mundo compartido remoto, CCU, planeta persistente 24/7).
+>
+> Hasta nuevo review, priorizar **1a**. **1b** y fases 2+ siguen siendo especificación futura, no backlog automático.
+
+---
+
 ### Fase 1 — Mundo en chunks, más ítems, base online local (PROVISIONAL)
 
-Especificación futura (no codear hasta gate):
+Especificación futura (no codear hasta gate). Ver desglose **1a / 1b** en la anotación de Cursor notebook arriba.
 
 - Introducir división en chunks y streaming básico de una región mayor.
 - Más familias de ítems útiles: arcos, escudos, botas (move-speed), etc., siempre con efecto gameplay.

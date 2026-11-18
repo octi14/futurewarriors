@@ -28,7 +28,8 @@ Mini mapa, 1 jugador, IA chase/attack, melee con stats de arma (reach/speed/dama
 
 ## Fases futuras (no codear hasta review-gate)
 
-1. Chunks + multiplayer localhost autoritativo + más ítems + trade P2P
+1. Chunks + multiplayer localhost autoritativo + más ítems + trade P2P  
+   - **Anotación Cursor notebook (no el Cursor de escritorio que escribió el plan):** sin capacidad de hostear aún → priorizar **1a offline** (chunks/ítems/feel en cliente); **1b online** (WS localhost / Atlas / trade) más adelante. Detalle en [PLAN.md](./PLAN.md).
 2. Transporte `Trip` avión/barco con timestamps
 3. Amigos + voz proximidad
 4. Geo terrestre + densidad + banca cuando esté diseñada

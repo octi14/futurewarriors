@@ -7,9 +7,22 @@ export type HeroHandle = {
   mixer: THREE.AnimationMixer | null;
   actions: Record<string, THREE.AnimationAction>;
   handGrip: THREE.Group;
+  offhandGrip: THREE.Group;
+  headGrip: THREE.Group;
+  torsoGrip: THREE.Group;
+  beltGrip: THREE.Group;
+  bootGripL: THREE.Group;
+  bootGripR: THREE.Group;
   setHurt: (hurt: boolean) => void;
-  update: (dt: number, walkPhase: number, moving: boolean, swinging: boolean) => void;
-  applySlash: (u: number) => void;
+  update: (
+    dt: number,
+    walkPhase: number,
+    moving: boolean,
+    swinging: boolean,
+    running?: boolean,
+  ) => void;
+  /** u 0..1 progreso; variant elige clip/estilo de espadazo */
+  applySlash: (u: number, variant?: number) => void;
 };
 
 function findObj(root: THREE.Object3D, names: string[]): THREE.Object3D | null {
@@ -54,16 +67,70 @@ export async function createHero(): Promise<HeroHandle> {
   const root = new THREE.Group();
   root.add(model);
 
-  // Actualizar matrices del esqueleto antes de colgar la espada
   model.updateMatrixWorld(true);
-  const palm =
-    findObj(model, ["MiddleHand.R", "Palm.R", "Fingers.R"]) ??
-    findObj(model, ["LowerArm.R"]) ??
+  const palmR =
+    findObj(model, ["MiddleHandR", "PalmR", "FingersR"]) ??
+    findObj(model, ["LowerArmR"]) ??
     model;
+  const palmL =
+    findObj(model, ["MiddleHandL", "PalmL", "FingersL"]) ??
+    findObj(model, ["LowerArmL"]) ??
+    model;
+  const headBone = findObj(model, ["Head"]) ?? model;
+  const torsoBone = findObj(model, ["Torso", "Abdomen", "Body"]) ?? model;
+  const beltBone = findObj(model, ["Abdomen", "Hips", "Torso"]) ?? model;
+  const footL = findObj(model, ["FootL"]) ?? model;
+  const footR = findObj(model, ["FootR"]) ?? model;
+
+  // ---------------------------------------------------------------------------
+  // ANCLAJES DE EQUIPO (ejes LOCALES del hueso). Editá acá el pivot de cada slot.
+  // position = dónde cuelga; rotation = orientación del ítem respecto al hueso.
+  // El mesh del ítem tiene OTRO offset fino en scene.ts → syncEquippedVisuals.
+  // ---------------------------------------------------------------------------
+
+  /** Arma (mano derecha) — PalmR / MiddleHandR */
   const handGrip = new THREE.Group();
-  handGrip.position.set(0.02, 0.06, 0);
-  handGrip.rotation.set(Math.PI / 2, 0, Math.PI / 2);
-  palm.add(handGrip);
+  handGrip.position.set(0, -0.04, 0.03); // x lateral, y a lo largo de dedos, z palma
+  handGrip.rotation.set(0.2, 0, Math.PI / 2);
+  palmR.add(handGrip);
+
+  /** Escudo / offhand (mano izquierda) — PalmL */
+  const offhandGrip = new THREE.Group();
+  offhandGrip.position.set(0, 0.08, 0.04);
+  offhandGrip.rotation.set(-Math.PI / 2, 0, Math.PI / 2);
+  palmL.add(offhandGrip);
+
+  /** Casco — Head (+Y ≈ arriba del cráneo) */
+  const headGrip = new THREE.Group();
+  headGrip.position.set(0, 0.22, 0.04); // subir/bajar casco: cambiar Y
+  headGrip.rotation.set(0, 0, 0);
+  headBone.add(headGrip);
+
+  /** Armadura — Torso */
+  const torsoGrip = new THREE.Group();
+  torsoGrip.position.set(0, 0.05, 0.02);
+  torsoGrip.rotation.set(0, 0, 0);
+  torsoBone.add(torsoGrip);
+
+  /** Cinturón — Abdomen / Hips */
+  const beltGrip = new THREE.Group();
+  beltGrip.position.set(0, -0.02, 0.01);
+  beltGrip.rotation.set(0, 0, 0);
+  beltBone.add(beltGrip);
+
+  /** Bota izquierda — FootL */
+  const bootGripL = new THREE.Group();
+  bootGripL.position.set(0, 0.06, 0.02);
+  bootGripL.rotation.set(-0.15, 0, 0);
+  bootGripL.scale.setScalar(1.35);
+  footL.add(bootGripL);
+
+  /** Bota derecha — FootR */
+  const bootGripR = new THREE.Group();
+  bootGripR.position.set(0, 0.06, 0.02);
+  bootGripR.rotation.set(-0.15, 0, 0);
+  bootGripR.scale.setScalar(1.35);
+  footR.add(bootGripR);
 
   const mixer = new THREE.AnimationMixer(model);
   const byName = new Map(gltf.animations.map((c) => [c.name, c]));
@@ -76,21 +143,38 @@ export async function createHero(): Promise<HeroHandle> {
   };
 
   const idle = mk("Man_Idle", "Man_Standing");
-  const walk = mk("Man_Walk", "Man_Run");
-  const slash = mk("Man_SwordSlash", "Man_Punch");
+  const walk = mk("Man_Walk");
+  const run = mk("Man_Run", "Man_Walk");
+  const slashA = mk("Man_SwordSlash");
+  const slashB = mk("Man_Punch", "Man_SwordSlash");
+  const slashC = mk("Man_SwordSlash"); // mismo clip, scrub invertido en applySlash
 
-  for (const a of [idle, walk]) {
+  for (const a of [idle, walk, run]) {
     a.setLoop(THREE.LoopRepeat, Infinity);
     a.play();
   }
   idle.weight = 1;
   walk.weight = 0;
-  slash.weight = 0;
-  slash.clampWhenFinished = true;
-  // Un frame para “asentar” el bind pose animado
+  run.weight = 0;
+  for (const s of [slashA, slashB, slashC]) {
+    s.weight = 0;
+    s.clampWhenFinished = true;
+    s.setLoop(THREE.LoopOnce, 1);
+  }
   mixer.update(1 / 30);
 
-  const actions: Record<string, THREE.AnimationAction> = { idle, walk, slash };
+  const slashVariants = [slashA, slashB, slashC];
+  let activeSlash = slashA;
+
+  const actions: Record<string, THREE.AnimationAction> = {
+    idle,
+    walk,
+    run,
+    slash: slashA,
+    slashA,
+    slashB,
+    slashC,
+  };
   const mats: THREE.MeshStandardMaterial[] = [];
   model.traverse((o) => {
     if (o instanceof THREE.Mesh) {
@@ -106,28 +190,62 @@ export async function createHero(): Promise<HeroHandle> {
     for (const m of mats) m.emissive.setHex(hex);
   }
 
-  function applySlash(u: number): void {
-    slash.enabled = true;
-    slash.paused = true;
-    slash.weight = 1;
+  function applySlash(u: number, variant = 0): void {
+    const idx = ((variant % slashVariants.length) + slashVariants.length) % slashVariants.length;
+    const next = slashVariants[idx];
+    for (const s of slashVariants) {
+      if (s !== next) s.weight = 0;
+    }
+    activeSlash = next;
+    activeSlash.enabled = true;
+    activeSlash.paused = true;
+    activeSlash.weight = 1;
     idle.weight = 0;
     walk.weight = 0;
-    const dur = Math.max(0.01, slash.getClip().duration);
-    slash.time = Math.min(0.999, u) * dur;
-    slash.play();
+    run.weight = 0;
+    const dur = Math.max(0.01, activeSlash.getClip().duration);
+    // Variante 2 = mismo SwordSlash pero recorrido al revés (otro “ángulo” visual)
+    const t = idx === 2 ? 1 - Math.min(0.999, u) : Math.min(0.999, u);
+    activeSlash.time = t * dur;
+    activeSlash.play();
   }
 
-  function update(dt: number, _walkPhase: number, moving: boolean, swinging: boolean): void {
+  function update(
+    dt: number,
+    _walkPhase: number,
+    moving: boolean,
+    swinging: boolean,
+    running = false,
+  ): void {
     if (!swinging) {
-      slash.weight = THREE.MathUtils.damp(slash.weight, 0, 10, dt);
-      const tw = moving ? 1 : 0;
-      walk.weight = THREE.MathUtils.damp(walk.weight, tw, 12, dt);
-      idle.weight = THREE.MathUtils.damp(idle.weight, 1 - tw, 12, dt);
+      for (const s of slashVariants) {
+        s.weight = THREE.MathUtils.damp(s.weight, 0, 10, dt);
+      }
+      const wantRun = moving && running ? 1 : 0;
+      const wantWalk = moving && !running ? 1 : 0;
+      run.weight = THREE.MathUtils.damp(run.weight, wantRun, 14, dt);
+      walk.weight = THREE.MathUtils.damp(walk.weight, wantWalk, 12, dt);
+      idle.weight = THREE.MathUtils.damp(idle.weight, moving ? 0 : 1, 12, dt);
       idle.paused = false;
       walk.paused = false;
+      run.paused = false;
     }
     mixer.update(dt);
   }
 
-  return { root, mixer, actions, handGrip, setHurt, update, applySlash };
+  return {
+    root,
+    mixer,
+    actions,
+    handGrip,
+    offhandGrip,
+    headGrip,
+    torsoGrip,
+    beltGrip,
+    bootGripL,
+    bootGripR,
+    setHurt,
+    update,
+    applySlash,
+  };
 }

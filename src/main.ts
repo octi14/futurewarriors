@@ -1,9 +1,13 @@
 import * as THREE from "three";
 import {
+  buyStat,
   createWorld,
+  dropFromBag,
+  dropFromEquip,
   equipFromBag,
   pickupNearest,
   stepWorld,
+  toggleCharacter,
   toggleInventory,
   tryAttack,
   unequipSlot,
@@ -15,8 +19,11 @@ import { bindHud } from "./render/hud";
 const app = document.getElementById("app")!;
 const world = createWorld({ mapSize: 40, aiCount: 6 });
 const hud = bindHud({
-  onEquipBag: (i) => equipFromBag(world, i),
+  onEquipBag: (id) => equipFromBag(world, id),
   onUnequip: (slot) => unequipSlot(world, slot),
+  onDropBag: (id) => dropFromBag(world, id),
+  onDropEquip: (slot) => dropFromEquip(world, slot),
+  onBuyStat: (stat) => buyStat(world, stat),
 });
 
 const projectScratch = new THREE.Vector3();
@@ -56,16 +63,30 @@ function mouseToGround(clientX: number, clientY: number): { x: number; y: number
 }
 
 const keys = new Set<string>();
+function sprintHeld(): boolean {
+  return keys.has("ShiftLeft") || keys.has("ShiftRight");
+}
+function uiOpen(): boolean {
+  return world.inventoryOpen || world.characterOpen;
+}
+function doAttack(): void {
+  if (uiOpen()) return;
+  tryAttack(world, { sprintHeld: sprintHeld() });
+}
 window.addEventListener("keydown", (e) => {
   keys.add(e.code);
   if (e.code === "Space") {
     e.preventDefault();
-    if (!world.inventoryOpen) tryAttack(world);
+    doAttack();
   }
   if (e.code === "KeyE") pickupNearest(world);
   if (e.code === "KeyI") {
     e.preventDefault();
     toggleInventory(world);
+  }
+  if (e.code === "KeyC") {
+    e.preventDefault();
+    toggleCharacter(world);
   }
 });
 window.addEventListener("keyup", (e) => keys.delete(e.code));
@@ -77,16 +98,15 @@ window.addEventListener("mousemove", (e) => {
 window.addEventListener("mousedown", (e) => {
   if (e.button !== 0) return;
   const t = e.target as HTMLElement;
-  if (t.closest("#inv, #stats, #help")) return;
-  if (world.inventoryOpen) return;
-  tryAttack(world);
+  if (t.closest("#inv, #char, #help, #combat-hud")) return;
+  doAttack();
 });
 window.addEventListener("resize", () => render.resize());
 
 function readInput(): InputState {
   let moveX = 0;
   let moveY = 0;
-  if (!world.inventoryOpen) {
+  if (!uiOpen()) {
     if (keys.has("KeyW") || keys.has("ArrowUp")) {
       moveX -= 1;
       moveY -= 1;
@@ -119,6 +139,7 @@ function readInput(): InputState {
     aimY: ground?.y ?? world.player.pos.y,
     hasAim: ground !== null,
     aimMoved,
+    sprint: sprintHeld(),
   };
 }
 

@@ -2,10 +2,12 @@ import * as THREE from "three";
 import type { SwordParams } from "../shared/types";
 
 function metalColor(hue: number, rarity: SwordParams["rarity"]): THREE.Color {
-  const base = new THREE.Color().setHSL(hue * 0.15 + 0.55, 0.15, 0.55);
-  if (rarity === "uncommon") base.offsetHSL(0.08, 0.2, 0.05);
-  if (rarity === "rare") base.offsetHSL(0.45, 0.35, 0.08);
-  if (rarity === "epic") base.offsetHSL(-0.05, 0.45, 0.12);
+  const sat = rarity === "epic" ? 0.55 : rarity === "rare" ? 0.42 : rarity === "uncommon" ? 0.32 : 0.22;
+  const lit = rarity === "epic" ? 0.58 : rarity === "rare" ? 0.52 : 0.48;
+  const base = new THREE.Color().setHSL(hue, sat, lit);
+  if (rarity === "uncommon") base.offsetHSL(0.05, 0.05, 0.02);
+  if (rarity === "rare") base.offsetHSL(0.02, 0.08, 0.04);
+  if (rarity === "epic") base.offsetHSL(-0.02, 0.1, 0.06);
   return base;
 }
 

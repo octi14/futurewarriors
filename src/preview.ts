@@ -99,10 +99,11 @@ try {
 scene.add(hero.root);
 status.textContent = "Humano CC0 Quaternius (skinned) — no procedural";
 
-const sword = buildSwordMesh(createSwordItem(1001).params);
-sword.scale.setScalar(0.7);
-sword.position.set(0, -0.02, 0.04);
-sword.rotation.set(Math.PI / 2, 0, 0.05);
+const swordItem = createSwordItem(1001);
+const sword = buildSwordMesh(swordItem.params as import("./shared/types").SwordParams);
+sword.scale.setScalar(0.55);
+sword.position.set(0, 0, 0);
+sword.rotation.set(0, 0, 0);
 hero.handGrip.add(sword);
 
 chkWire.addEventListener("change", () => {

@@ -1,6 +1,12 @@
-import type { EquipSlotId, ItemInstance } from "../shared/types";
+import type { CoreStatId, EquipSlotId, ItemInstance } from "../shared/types";
 import type { WorldState } from "../sim/world";
-import { EQUIP_SLOT_LABELS, getEquipped } from "../sim/world";
+import {
+  BAG_COLS,
+  BAG_ROWS,
+  EQUIP_SLOT_LABELS,
+  getEquipped,
+  statUpgradeCost,
+} from "../sim/world";
 import { itemIconDataUrl, itemTooltipHtml } from "./itemIcon";
 
 export type ProjectFn = (worldX: number, worldZ: number, height: number) => {
@@ -13,28 +19,38 @@ function iconImg(item: ItemInstance): string {
   return `<img class="item-icon" src="${itemIconDataUrl(item)}" alt="" draggable="false" />`;
 }
 
-function bagKey(world: WorldState): string {
+function uiKey(world: WorldState): string {
   const eq = Object.entries(world.equipment)
     .map(([k, v]) => `${k}:${v?.id ?? ""}`)
     .join("|");
-  const bag = world.bag.map((i) => i?.id ?? "").join(",");
-  return `${world.inventoryOpen}:${eq}:${bag}`;
+  const bag = world.bag.map((p) => `${p.item.id}@${p.x},${p.y}`).join(";");
+  const sp = world.statPurchases;
+  return `${world.inventoryOpen}:${world.characterOpen}:${eq}:${bag}:${world.coins}:${sp.strength},${sp.speed},${sp.defense}`;
 }
 
 export function bindHud(handlers: {
-  onEquipBag: (bagIndex: number) => void;
+  onEquipBag: (itemId: string) => void;
   onUnequip: (slot: EquipSlotId) => void;
+  onDropBag: (itemId: string) => void;
+  onDropEquip: (slot: EquipSlotId) => void;
+  onBuyStat: (stat: CoreStatId) => void;
 }): {
   update: (world: WorldState, project: ProjectFn) => void;
 } {
-  const statsEl = document.getElementById("stats")!;
+  const hpFill = document.getElementById("hp-fill")!;
+  const hpLabel = document.getElementById("hp-label")!;
+  const enFill = document.getElementById("en-fill")!;
+  const enLabel = document.getElementById("en-label")!;
+  const beltEl = document.getElementById("hud-belt")!;
   const invEl = document.getElementById("inv")!;
+  const charEl = document.getElementById("char")!;
   const toastEl = document.getElementById("toast")!;
   const floatersEl = document.getElementById("floaters")!;
   const tipEl = document.getElementById("tooltip")!;
 
   let lastKey = "";
   let tipItem: ItemInstance | null = null;
+  let itemIndex = new Map<string, ItemInstance>();
 
   function hideTip(): void {
     tipItem = null;
@@ -56,19 +72,33 @@ export function bindHud(handlers: {
     tipEl.style.top = `${Math.max(8, y)}px`;
   }
 
+  function findItemById(id: string | undefined): ItemInstance | null {
+    if (!id) return null;
+    return itemIndex.get(id) ?? null;
+  }
+
   invEl.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
-    const bag = target.closest<HTMLElement>("[data-bag]");
-    if (bag && bag.dataset.bag !== undefined && !bag.classList.contains("empty")) {
-      handlers.onEquipBag(Number(bag.dataset.bag));
+    const drop = e.shiftKey;
+    const bag = target.closest<HTMLElement>("[data-bag-item]");
+    if (bag?.dataset.bagItem) {
+      if (drop) handlers.onDropBag(bag.dataset.bagItem);
+      else handlers.onEquipBag(bag.dataset.bagItem);
       hideTip();
       return;
     }
     const eq = target.closest<HTMLElement>("[data-unequip]");
     if (eq && eq.classList.contains("filled")) {
-      handlers.onUnequip(eq.dataset.unequip as EquipSlotId);
+      const slot = eq.dataset.unequip as EquipSlotId;
+      if (drop) handlers.onDropEquip(slot);
+      else handlers.onUnequip(slot);
       hideTip();
     }
+  });
+
+  charEl.addEventListener("click", (e) => {
+    const buy = (e.target as HTMLElement).closest<HTMLElement>("[data-buy-stat]");
+    if (buy?.dataset.buyStat) handlers.onBuyStat(buy.dataset.buyStat as CoreStatId);
   });
 
   invEl.addEventListener("mousemove", (e) => {
@@ -79,19 +109,8 @@ export function bindHud(handlers: {
   invEl.addEventListener("mouseover", (e) => {
     const t = (e.target as HTMLElement).closest<HTMLElement>("[data-tip]");
     if (!t) return;
-    const bag = t.dataset.bag;
-    if (bag !== undefined) {
-      // need world ref — store on element via data-id lookup in rebuild
-      const id = t.dataset.itemId;
-      const item = findItemById(id);
-      if (item) showTip(item, e.clientX, e.clientY);
-      return;
-    }
-    const slot = t.dataset.unequip as EquipSlotId | undefined;
-    if (slot) {
-      const item = findItemById(t.dataset.itemId);
-      if (item) showTip(item, e.clientX, e.clientY);
-    }
+    const item = findItemById(t.dataset.itemId);
+    if (item) showTip(item, e.clientX, e.clientY);
   });
 
   invEl.addEventListener("mouseout", (e) => {
@@ -103,27 +122,22 @@ export function bindHud(handlers: {
     hideTip();
   });
 
-  let itemIndex = new Map<string, ItemInstance>();
-  function findItemById(id: string | undefined): ItemInstance | null {
-    if (!id) return null;
-    return itemIndex.get(id) ?? null;
-  }
-
   function rebuildInv(world: WorldState): void {
     itemIndex = new Map();
     for (const it of Object.values(world.equipment)) {
       if (it) itemIndex.set(it.id, it);
     }
-    for (const it of world.bag) {
-      if (it) itemIndex.set(it.id, it);
-    }
+    for (const p of world.bag) itemIndex.set(p.item.id, p.item);
 
-    const bagHtml = world.bag
-      .map((item, i) => {
-        if (!item) {
-          return `<button type="button" class="bag-slot empty" data-bag="${i}"></button>`;
-        }
-        return `<button type="button" class="bag-slot" data-bag="${i}" data-tip="1" data-item-id="${item.id}">
+    const cells = Array.from({ length: BAG_COLS * BAG_ROWS }, (_, i) => {
+      return `<div class="bag-cell" style="grid-column:${(i % BAG_COLS) + 1};grid-row:${Math.floor(i / BAG_COLS) + 1}"></div>`;
+    }).join("");
+
+    const itemsHtml = world.bag
+      .map((p) => {
+        const { item, x, y } = p;
+        return `<button type="button" class="bag-item" data-bag-item="${item.id}" data-tip="1" data-item-id="${item.id}"
+          style="grid-column:${x + 1} / span ${item.gridW};grid-row:${y + 1} / span ${item.gridH}">
           ${iconImg(item)}
         </button>`;
       })
@@ -144,24 +158,63 @@ export function bindHud(handlers: {
     };
 
     invEl.innerHTML = `
-      <div class="inv-title">Inventario <span>(I cerrar · click equipar/desequipar)</span></div>
+      <div class="inv-title">
+        <span>Inventario <span style="opacity:.65;font-weight:400">(I)</span></span>
+        <span class="inv-coins">${world.coins} 🪙</span>
+      </div>
       <div class="inv-body">
-        <div class="paper-doll">
-          <div class="pd-amulet">${eqSlot("amulet", "sm")}</div>
-          <div class="pd-helmet">${eqSlot("helmet")}</div>
-          <div class="pd-weapon">${eqSlot("weapon")}</div>
-          <div class="pd-armor">${eqSlot("armor")}</div>
-          <div class="pd-offhand">${eqSlot("offhand")}</div>
-          <div class="pd-gloves">${eqSlot("gloves", "sm")}</div>
-          <div class="pd-belt">${eqSlot("belt", "sm")}</div>
-          <div class="pd-boots">${eqSlot("boots", "sm")}</div>
-          <div class="pd-ring1">${eqSlot("ring1", "sm")}</div>
-          <div class="pd-ring2">${eqSlot("ring2", "sm")}</div>
+        <div class="inv-equip">
+          <div class="inv-section">Equipo</div>
+          <div class="paper-doll">
+            <div class="pd-amulet">${eqSlot("amulet", "sm")}</div>
+            <div class="pd-helmet">${eqSlot("helmet")}</div>
+            <div class="pd-weapon">${eqSlot("weapon")}</div>
+            <div class="pd-armor">${eqSlot("armor")}</div>
+            <div class="pd-offhand">${eqSlot("offhand")}</div>
+            <div class="pd-gloves">${eqSlot("gloves", "sm")}</div>
+            <div class="pd-belt">${eqSlot("belt", "sm")}</div>
+            <div class="pd-pants">${eqSlot("pants", "sm")}</div>
+            <div class="pd-boots">${eqSlot("boots", "sm")}</div>
+            <div class="pd-ring1">${eqSlot("ring1", "sm")}</div>
+            <div class="pd-ring2">${eqSlot("ring2", "sm")}</div>
+          </div>
         </div>
         <div class="inv-storage">
-          <div class="inv-section">Almacenamiento</div>
-          <div class="bag-grid">${bagHtml}</div>
+          <div class="inv-section">Mochila · click equipar · shift+click tirar</div>
+          <div class="bag-grid" style="grid-template-columns:repeat(${BAG_COLS},var(--cell));grid-template-rows:repeat(${BAG_ROWS},var(--cell))">
+            ${cells}${itemsHtml}
+          </div>
         </div>
+      </div>
+    `;
+  }
+
+  function rebuildChar(world: WorldState): void {
+    const c = world.player.core;
+    const row = (stat: CoreStatId, label: string, val: number) => {
+      const cost = statUpgradeCost(world, stat);
+      const can = world.coins >= cost;
+      return `<button type="button" class="stat-buy ${can ? "" : "disabled"}" data-buy-stat="${stat}">
+        <span class="stat-buy-label">${label} <b>${val}</b></span>
+        <span class="stat-buy-cost">+1 · ${cost}🪙</span>
+      </button>`;
+    };
+    charEl.innerHTML = `
+      <div class="char-title">
+        <span>Personaje <span style="opacity:.65;font-weight:400">(C)</span></span>
+        <span class="char-coins">${world.coins} 🪙</span>
+      </div>
+      <div class="char-section">Atributos</div>
+      <div class="char-core">
+        <div class="char-core-row"><span>Fuerza</span><b>${c.strength}</b></div>
+        <div class="char-core-row"><span>Velocidad</span><b>${c.speed}</b></div>
+        <div class="char-core-row"><span>Defensa</span><b>${c.defense}</b></div>
+      </div>
+      <div class="char-section">Entrenar</div>
+      <div class="stat-shop">
+        ${row("strength", "Fuerza", c.strength)}
+        ${row("speed", "Velocidad", c.speed)}
+        ${row("defense", "Defensa", c.defense)}
       </div>
     `;
   }
@@ -169,21 +222,30 @@ export function bindHud(handlers: {
   function update(world: WorldState, project: ProjectFn): void {
     const p = world.player;
     const eq = getEquipped(world);
-    const hpPct = Math.max(0, (p.hp / p.maxHp) * 100);
+    const hpPct = Math.max(0, Math.min(100, (p.hp / p.maxHp) * 100));
+    const enPct = Math.max(0, Math.min(100, (p.energy / Math.max(1, p.maxEnergy)) * 100));
     const cd = p.attackCooldown;
-    statsEl.innerHTML = `
-      <div><b>HP</b> ${Math.ceil(p.hp)} / ${p.maxHp}</div>
-      <div class="hp-bar"><div class="hp-fill" style="width:${hpPct}%;background:${hpPct < 30 ? "#a03020" : "#8a3a2a"}"></div></div>
-      <div style="margin-top:8px"><b>Arma</b> ${eq ? eq.name : "Puños"}</div>
+    const cdPct = cd > 0 ? Math.min(100, (cd / 0.55) * 100) : 0;
+
+    hpFill.style.height = `${hpPct}%`;
+    hpLabel.textContent = `${Math.ceil(p.hp)}/${p.maxHp}`;
+    enFill.style.height = `${enPct}%`;
+    enLabel.textContent = `${Math.ceil(p.energy)}/${p.maxEnergy}`;
+
+    const c = p.core;
+    beltEl.innerHTML = `
+      <div class="weapon-name">${eq ? eq.name : "Puños"}</div>
       ${
         eq
-          ? `<div style="opacity:.85;font-size:12px">DMG ${eq.stats.damage} · Reach ${eq.stats.reach} · SPD ${eq.stats.attackSpeed}</div>`
-          : ""
+          ? `<div class="weapon-stats">DMG ${eq.stats.damage} · Alc ${eq.stats.reach} · Vel ${eq.stats.attackSpeed}</div>`
+          : `<div class="weapon-stats">Sin arma equipada</div>`
       }
-      <div style="margin-top:6px;opacity:.7">IA vivas: ${world.ais.filter((a) => a.alive).length}${cd > 0 ? ` · CD ${cd.toFixed(2)}s` : " · listo"}</div>
+      <div class="core-stats">FUE ${c.strength} · VEL ${c.speed} · DEF ${c.defense} · ${world.coins}🪙</div>
+      <div class="meta">IA ${world.ais.filter((a) => a.alive).length} · ${p.running ? "Corriendo" : cd > 0 ? "Recarga" : "Listo"}</div>
+      <div class="cd-pip" title="Recarga de ataque"><i style="width:${cdPct}%"></i></div>
     `;
 
-    const key = bagKey(world);
+    const key = uiKey(world);
     if (key !== lastKey) {
       lastKey = key;
       hideTip();
@@ -193,6 +255,13 @@ export function bindHud(handlers: {
       } else {
         invEl.classList.remove("open");
         invEl.innerHTML = "";
+      }
+      if (world.characterOpen) {
+        charEl.classList.add("open");
+        rebuildChar(world);
+      } else {
+        charEl.classList.remove("open");
+        charEl.innerHTML = "";
       }
     }
 
