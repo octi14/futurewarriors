@@ -3,11 +3,11 @@ import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment
 import type { ItemInstance } from "../shared/types";
 import { buildItemMesh, disposeObject3D } from "./itemMesh";
 
-const rarityStroke: Record<string, string> = {
-  common: "#8a7a5c",
-  uncommon: "#5a8a4a",
-  rare: "#4a6aaa",
-  epic: "#9a6a20",
+const rarityNameColor: Record<string, string> = {
+  common: "#d8c8a8",
+  uncommon: "#7dcc6a",
+  rare: "#6a9aef",
+  epic: "#e8b84a",
 };
 
 function rarityOf(item: ItemInstance): string {
@@ -121,10 +121,10 @@ export function itemIconDataUrl(item: ItemInstance, size = 128): string {
 export function itemTooltipHtml(item: ItemInstance): string {
   const s = item.stats;
   const rarity = rarityOf(item);
-  const border = rarityStroke[rarity] ?? "#8a7a5c";
+  const nameColor = rarityNameColor[rarity] ?? rarityNameColor.common;
   const lines: string[] = [
-    `<div class="tt-name" style="border-left:3px solid ${border};padding-left:6px">${item.name}</div>`,
-    `<div class="tt-meta">${rarity} · ${item.kind} · ${item.equipSlot} · ${item.gridW}×${item.gridH}</div>`,
+    `<div class="tt-name" style="color:${nameColor}">${item.name}</div>`,
+    `<div class="tt-meta">${rarity} · ${item.kind} · ${item.equipSlot}</div>`,
   ];
   if (s.damage) lines.push(`<div class="tt-stat">Daño <b>${s.damage}</b></div>`);
   if (s.reach) lines.push(`<div class="tt-stat">Alcance <b>${s.reach}</b></div>`);
@@ -133,7 +133,5 @@ export function itemTooltipHtml(item: ItemInstance): string {
   if (s.moveSpeedMult !== 1)
     lines.push(`<div class="tt-stat">Vel. movimiento <b>×${s.moveSpeedMult}</b></div>`);
   if (s.maxHpBonus) lines.push(`<div class="tt-stat">HP máx. <b>+${s.maxHpBonus}</b></div>`);
-  lines.push(`<div class="tt-hint">Click: equipar / desequipar</div>`);
-  lines.push(`<div class="tt-hint">Shift+click: tirar al suelo</div>`);
   return lines.join("");
 }

@@ -24,8 +24,8 @@ function makeSwordMetal(params: SwordParams, polish = 1): THREE.MeshStandardMate
     metalness: dark ? 0.78 : sat > 0.25 ? 0.88 : 0.94,
     roughness: Math.max(0.08, (dark ? rough * 1.25 : rough) / polish),
     envMapIntensity: (dark ? 0.7 : 1.1) + polish * 0.25,
-    emissive: color.clone().multiplyScalar(params.rarity === "epic" ? 0.08 : 0.02),
-    emissiveIntensity: 1,
+    emissive: color.clone().multiplyScalar(0.02 + rarityGlowStrength(params.rarity) * 0.08),
+    emissiveIntensity: 0.35 + rarityGlowStrength(params.rarity) * 0.5,
   });
 }
 
@@ -36,9 +36,9 @@ function makeSwordEdge(params: SwordParams): THREE.MeshStandardMaterial {
     color: c,
     metalness: 1,
     roughness: 0.08,
-    envMapIntensity: 1.5,
-    emissive: c.clone().multiplyScalar(0.08 + glow * 0.4),
-    emissiveIntensity: 0.6 + glow,
+    envMapIntensity: 1.35,
+    emissive: c.clone().multiplyScalar(0.05 + glow * 0.22),
+    emissiveIntensity: 0.35 + glow * 0.55,
   });
 }
 

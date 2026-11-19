@@ -1,6 +1,22 @@
 import { pickRarity, rarityMult, rngFromSeed } from "./rng";
 import { createDaggerItem, createSwordItem, nextItemId, randomSwordSeed } from "./swords";
+import {
+  ARMOR_VISUAL,
+  BELT_VISUAL,
+  BOOT_VISUAL,
+  GLOVE_VISUAL,
+  PANTS_VISUAL,
+  SHIELD_VISUAL,
+  armorVisual,
+  beltVisual,
+  bootVisual,
+  gloveVisual,
+  pantsVisual,
+  pickStyle,
+  shieldVisual,
+} from "./presets";
 import type {
+  AmuletParams,
   ArmorParams,
   AxeParams,
   BeltParams,
@@ -13,6 +29,7 @@ import type {
   ItemStats,
   PantsParams,
   Rarity,
+  RingParams,
   ShieldParams,
   SwordParams,
   ThrowParams,
@@ -106,28 +123,82 @@ const crossbowAdj: Record<Rarity, string[]> = {
 export function createBootsItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
-  const styleRoll = r();
-  const style: BootsParams["style"] =
-    styleRoll < 0.35 ? "light" : styleRoll < 0.6 ? "trail" : styleRoll < 0.82 ? "greaves" : "plate";
+  const genre = pickStyle(r, BOOT_VISUAL);
+  const style = bootVisual(genre);
+  const metalRoll = r();
+  const metalTone: BootsParams["metalTone"] =
+    style === "plate" || style === "greaves"
+      ? metalRoll < 0.45
+        ? "steel"
+        : metalRoll < 0.72
+          ? "copper"
+          : "gold"
+      : "none";
   const params: BootsParams = {
     seed,
-    style,
-    height: style === "greaves" ? 0.38 + r() * 0.2 : 0.22 + r() * 0.28,
-    sole: 0.04 + r() * 0.05,
-    leatherHue: r(),
+    style: genre,
+    metalTone,
+    height:
+      style === "greaves" || style === "trail" || style === "combat"
+        ? 0.34 + r() * 0.2
+        : style === "military"
+          ? 0.26 + r() * 0.12
+          : style === "sport"
+            ? 0.18 + r() * 0.08
+            : 0.16 + r() * 0.08,
+    sole:
+      style === "sport" ? 0.06 + r() * 0.05 : style === "canvas" ? 0.04 + r() * 0.03 : 0.045 + r() * 0.05,
+    // Lona: negro / rojo Chuck / navy (como las refs)
+    leatherHue:
+      style === "canvas"
+        ? (() => {
+            const c = r();
+            if (c < 0.34) return 0.01; // negro
+            if (c < 0.62) return 0.04; // rojo
+            if (c < 0.88) return 0.6; // navy
+            return 0.12 + r() * 0.5;
+          })()
+        : r(),
     rarity,
   };
   const m = rarityMult(rarity);
   const speed =
-    style === "light"
-      ? 1.08 + r() * 0.12
-      : style === "trail"
-        ? 1.12 + r() * 0.14
-        : style === "greaves"
-          ? 1.02 + r() * 0.06
-          : 1.04 + r() * 0.08;
+    style === "canvas" || style === "sport"
+      ? 1.1 + r() * 0.12
+      : style === "combat" || style === "military"
+        ? 1.05 + r() * 0.08
+        : style === "trail"
+          ? 1.08 + r() * 0.1
+          : 1.02 + r() * 0.06;
+  const extraNouns: Partial<Record<BootsParams["style"], string[]>> = {
+    sneaker: ["Sneakers", "Zapatillas urbanas"],
+    sandal: ["Sandalias", "Ojotas"],
+    loafer: ["Mocasines", "Zapatos de vestir"],
+    oxford: ["Oxfords", "Zapatos de cuero"],
+    riding: ["Botas de montar", "Botas de equitación"],
+    dress: ["Botines", "Botas de gala"],
+    work: ["Botas de trabajo", "Botas de obra"],
+    ski: ["Botas de nieve", "Botas de ski"],
+  };
   const nouns =
-    style === "greaves" ? ["Grebas", "Canilleras", "Grebas"] : style === "plate" ? ["Botas de placa", "Botas blindadas", "Escarpes"] : ["Botas", "Botines", "Botas de cuero"];
+    extraNouns[genre] ??
+    style === "canvas"
+      ? ["Zapatillas de lona", "Lonas", "Zapatillas"]
+      : style === "sport"
+        ? ["Zapatillas deportivas", "Runners", "Trainers"]
+        : style === "military"
+          ? ["Botas militares", "Zapatos tácticos", "Botas de campaña"]
+          : style === "combat"
+            ? ["Borcegos", "Botas de combate", "Combat boots"]
+            : style === "trail"
+              ? ["Botas de trekking", "Botas altas", "Caña alta"]
+              : style === "greaves"
+                ? ["Grebas", "Canilleras", "Grebas"]
+                : metalTone === "gold"
+                  ? ["Escarpes dorados", "Botas de placas", "Botas reales"]
+                  : metalTone === "copper"
+                    ? ["Escarpes cobrizos", "Botas de bronce", "Botas herradas"]
+                    : ["Botas de placa", "Escarpes de acero", "Botas blindadas"];
   return {
     id: nextItemId(seed),
     kind: "boots",
@@ -150,15 +221,14 @@ export function createBootsItem(seed: number): ItemInstance {
 export function createShieldItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
-  const shapeRoll = r();
-  const shape: ShieldParams["shape"] =
-    shapeRoll < 0.4 ? "round" : shapeRoll < 0.75 ? "heater" : "kite";
+  const genre = pickStyle(r, SHIELD_VISUAL);
+  const shape = shieldVisual(genre);
   const matRoll = r();
   const material: ShieldParams["material"] =
     matRoll < 0.4 ? "wood" : matRoll < 0.75 ? "reinforced" : "metal";
   const params: ShieldParams = {
     seed,
-    shape,
+    shape: genre,
     material,
     width: 0.35 + r() * 0.35,
     height: 0.4 + r() * 0.45,
@@ -169,7 +239,14 @@ export function createShieldItem(seed: number): ItemInstance {
   const m = rarityMult(rarity);
   const area = params.width * params.height;
   const matArmor = material === "metal" ? 1.35 : material === "reinforced" ? 1.15 : 1;
+  const shapeNouns: Partial<Record<ShieldParams["shape"], string[]>> = {
+    buckler: ["Buckler", "Broquel chico"],
+    targe: ["Targe", "Rodela"],
+    tower: ["Escudo torre", "Escudo de infantería"],
+    pavise: ["Pavés", "Escudo de asedio"],
+  };
   const nouns =
+    shapeNouns[genre] ??
     material === "metal"
       ? ["Escudo de acero", "Broquel metálico", "Rodela de hierro"]
       : material === "reinforced"
@@ -193,26 +270,51 @@ export function createShieldItem(seed: number): ItemInstance {
   };
 }
 
+const HELMET_GENRE: Record<
+  HelmetParams["style"],
+  { nouns: string[]; cover: number; cloth?: boolean; hard?: boolean; slow?: boolean }
+> = {
+  cap: { nouns: ["Gorra", "Casquete"], cover: 0.85 },
+  beret: { nouns: ["Boina", "Boina militar"], cover: 0.55, cloth: true },
+  bandana: { nouns: ["Pañuelo", "Bandana"], cover: 0.4, cloth: true },
+  beanie: { nouns: ["Gorro", "Beanie"], cover: 0.5, cloth: true },
+  cowboy: { nouns: ["Sombrero", "Sombrero de ala"], cover: 0.6, cloth: true },
+  ushanka: { nouns: ["Ushanka", "Gorro de orejeras"], cover: 0.7, cloth: true },
+  turban: { nouns: ["Turbante", "Tocado"], cover: 0.55, cloth: true },
+  moto: { nouns: ["Casco de moto", "Casco integral"], cover: 1.35, hard: true },
+  bike: { nouns: ["Casco de bici", "Casco de ciclismo"], cover: 0.9, hard: true },
+  racing: { nouns: ["Casco de carreras", "Casco de piloto"], cover: 1.3, hard: true, slow: true },
+  construction: { nouns: ["Casco de obra", "Casco de construcción"], cover: 1.05, hard: true },
+  riot: { nouns: ["Casco antidisturbios", "Casco táctico"], cover: 1.35, hard: true },
+  pilot: { nouns: ["Casco de aviador", "Casco de vuelo"], cover: 1.2, hard: true },
+  nasal: { nouns: ["Casco nasal", "Yelmo nasal"], cover: 1.15 },
+  full: { nouns: ["Yelmo cerrado", "Casco completo"], cover: 1.4, slow: true },
+  barbute: { nouns: ["Barbuta", "Celada barbuta"], cover: 1.25 },
+  sallet: { nouns: ["Sallet", "Celada sallet"], cover: 1.15 },
+  great: { nouns: ["Gran yelmo", "Yelmo de torneo"], cover: 1.5, slow: true },
+  horned: { nouns: ["Yelmo astado", "Casco con cuernos"], cover: 1.25 },
+  kettle: { nouns: ["Capelina", "Kettle hat"], cover: 1.1 },
+  morion: { nouns: ["Morrión", "Celada morrión"], cover: 1.15 },
+  bascinet: { nouns: ["Bacinete", "Bascinet"], cover: 1.3 },
+  coif: { nouns: ["Cofia", "Almófar"], cover: 0.8, cloth: true },
+  crown: { nouns: ["Corona", "Diadema"], cover: 0.45 },
+  bucket: { nouns: ["Yelmo de cubo", "Casco de cubo"], cover: 1.45, slow: true },
+};
+
 export function createHelmetItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
-  const styles: HelmetParams["style"][] = [
-    "cap",
-    "nasal",
-    "full",
-    "barbute",
-    "sallet",
-    "great",
-    "horned",
-  ];
-  const style = styles[Math.floor(r() * styles.length)];
+  const styles = Object.keys(HELMET_GENRE) as HelmetParams["style"][];
+  const style = styles[Math.floor(r() * styles.length)]!;
+  const genre = HELMET_GENRE[style];
   const matRoll = r();
-  const material: HelmetParams["material"] =
-    style === "cap" && matRoll < 0.55
-      ? "leather"
+  const material: HelmetParams["material"] = genre.cloth
+    ? "leather"
+    : genre.hard
+      ? "steel"
       : matRoll < 0.22
         ? "bronze"
-        : matRoll < 0.35
+        : matRoll < 0.4
           ? "leather"
           : "steel";
   const params: HelmetParams = {
@@ -225,21 +327,8 @@ export function createHelmetItem(seed: number): ItemInstance {
     rarity,
   };
   const m = rarityMult(rarity);
-  const cover =
-    style === "great" || style === "full"
-      ? 1.4
-      : style === "barbute" || style === "horned"
-        ? 1.25
-        : style === "nasal" || style === "sallet"
-          ? 1.15
-          : 1;
   const matMul = material === "steel" ? 1.2 : material === "bronze" ? 1.05 : 0.85;
-  const nouns =
-    material === "leather"
-      ? ["Capacete de cuero", "Casco de cuero", "Capucha endurecida"]
-      : material === "bronze"
-        ? ["Casco de bronce", "Celada de bronce", "Yelmo bronceado"]
-        : ["Casco", "Celada", "Yelmo de acero"];
+  const nouns = genre.nouns;
   return {
     id: nextItemId(seed),
     kind: "helmet",
@@ -248,8 +337,8 @@ export function createHelmetItem(seed: number): ItemInstance {
     params,
     stats: {
       ...emptyCombat(),
-      armor: Math.round((2 + params.dome * 10) * cover * matMul * m * 10) / 10,
-      moveSpeedMult: style === "great" ? 0.96 : 1,
+      armor: Math.round((2 + params.dome * 10) * genre.cover * matMul * m * 10) / 10,
+      moveSpeedMult: genre.slow ? 0.96 : 1,
       maxHpBonus: Math.round((8 + params.dome * 40) * m),
     },
     name: pickName(seed, rarity, helmAdj, nouns),
@@ -261,21 +350,16 @@ export function createHelmetItem(seed: number): ItemInstance {
 export function createArmorItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
-  const styleRoll = r();
-  const style: ArmorParams["style"] =
-    styleRoll < 0.18
-      ? "leather"
-      : styleRoll < 0.36
-        ? "padded"
-        : styleRoll < 0.58
-          ? "chain"
-          : styleRoll < 0.76
-            ? "scale"
-            : "plate";
+  const genre = pickStyle(r, ARMOR_VISUAL);
+  const style = armorVisual(genre);
+  const sleeves: ArmorParams["sleeves"] =
+    style === "vest" ? "none" : r() < 0.42 ? "short" : "long";
   const finishRoll = r();
   let finish: ArmorParams["finish"] = "bare";
-  if (style === "leather" || style === "padded") {
+  if (style === "hoodie" || style === "jacket" || style === "leather" || style === "padded") {
     finish = finishRoll < 0.7 ? "painted" : "darkened";
+  } else if (style === "vest") {
+    finish = finishRoll < 0.5 ? "darkened" : "bare";
   } else if (style === "plate" || style === "scale") {
     finish =
       finishRoll < 0.35
@@ -286,16 +370,86 @@ export function createArmorItem(seed: number): ItemInstance {
             ? "painted"
             : "darkened";
   } else {
-    // chain: suele ser metal sin pintar o brunido
     finish = finishRoll < 0.55 ? "bare" : finishRoll < 0.8 ? "darkened" : "polished";
   }
+  const casual = style === "hoodie" || style === "jacket";
+  const hue = r();
+  // --- Variedad de LOOT (solo probs / flags). El mesh se ajusta en skinnedGear.ts → armorClothesDecors / ARMOR_DECOR.
+  // Subí el número de `r() < X` para que salga MÁS seguido; bajalo para que sea más raro.
+  const hasAccent = casual ? r() < 0.22 : style === "vest" ? r() < 0.12 : r() < 0.08;
+  const accentHue = hasAccent ? (hue + 0.18 + r() * 0.55) % 1 : undefined;
+  // CAPUCHA: % de chance. Buzo 0.88 = casi siempre; campera 0.18 = raro. `false` = nunca.
+  const hood = style === "hoodie" ? r() < 0.88 : style === "jacket" ? r() < 0.18 : false;
+  const zipRoll = r();
+  // CIERRE: umbrales acumulativos 0..1 → "none" | "half" | "full".
+  // Ej. jacket: <0.08 none, <0.35 half, resto full. Subí el primer corte → más sin cierre.
+  const zipper: ArmorParams["zipper"] =
+    style === "jacket"
+      ? zipRoll < 0.08
+        ? "none"
+        : zipRoll < 0.35
+          ? "half"
+          : "full"
+      : style === "hoodie"
+        ? zipRoll < 0.45
+          ? "none"
+          : zipRoll < 0.75
+            ? "half"
+            : "full"
+        : style === "leather" || style === "padded"
+          ? zipRoll < 0.55
+            ? "none"
+            : "full"
+          : "none";
+  // BOLSILLOS: cantidad 0..4. Buzo: 1=canguro, 2=laterales. Jacket/vest: 1+floor(r()*N).
+  const pockets =
+    style === "hoodie"
+      ? r() < 0.7
+        ? 1
+        : r() < 0.85
+          ? 2
+          : 0
+      : style === "jacket"
+        ? 1 + Math.floor(r() * 4)
+        : style === "vest"
+          ? 2 + Math.floor(r() * 3)
+          : style === "leather"
+            ? Math.floor(r() * 3)
+            : 0;
+  // FRANJAS / LOGO / COLORBLOCK / PUÑOS / CORDONES: mismas reglas (r()<X = % de aparición).
+  const stripeRoll = r();
+  const stripe: ArmorParams["stripe"] =
+    !casual && style !== "padded"
+      ? "none"
+      : stripeRoll < 0.55
+        ? "none"
+        : stripeRoll < 0.7
+          ? "chest"
+          : stripeRoll < 0.82
+            ? "sleeve"
+            : stripeRoll < 0.92
+              ? "side"
+              : "hem";
+  // logo 0 = sin logo; 1..64 = id del glifo. Chance: casual 32%, resto 6%.
+  const logo = casual && r() < 0.32 ? 1 + Math.floor(r() * 64) : r() < 0.06 ? 1 + Math.floor(r() * 64) : 0;
   const params: ArmorParams = {
     seed,
-    style,
+    style: genre,
+    sleeves,
     finish,
-    bulk: 0.45 + r() * 0.55,
-    hue: r(),
+    bulk: casual ? 0.25 + r() * 0.35 : 0.35 + r() * 0.45,
+    hue,
     rarity,
+    accentHue,
+    hood,
+    zipper,
+    pockets,
+    stripe,
+    stripeHue: stripe !== "none" ? (accentHue ?? (hue + 0.4 + r() * 0.3) % 1) : undefined,
+    logo,
+    colorBlock: !!(accentHue && casual && r() < 0.45),
+    cuffs: casual ? r() < 0.75 : style === "padded" && r() < 0.4,
+    cords: hood && r() < 0.7, // cordones solo si hay capucha
   };
   const m = rarityMult(rarity);
   const armorBase =
@@ -305,19 +459,45 @@ export function createArmorItem(seed: number): ItemInstance {
         ? 7 + params.bulk * 5
         : style === "chain"
           ? 5.5 + params.bulk * 4
-          : style === "padded"
-            ? 3.5 + params.bulk * 2.5
-            : 3 + params.bulk * 2;
+          : style === "vest"
+            ? 5 + params.bulk * 3
+            : style === "padded"
+              ? 3.5 + params.bulk * 2.5
+              : style === "leather"
+                ? 3 + params.bulk * 2
+                : style === "jacket"
+                  ? 1.5 + params.bulk
+                  : 0.8 + params.bulk * 0.8;
+  const extraNouns: Partial<Record<ArmorParams["style"], string[]>> = {
+    shirt: ["Remera", "Camisa"],
+    tunic: ["Túnica", "Sayo"],
+    coat: ["Abrigo", "Sobretodo"],
+    duster: ["Duster", "Guardapolvo"],
+    poncho: ["Poncho", "Manta"],
+    tabard: ["Tabardo", "Sobrevesta"],
+    brigandine: ["Brigantina", "Jaco de placas"],
+    gambeson: ["Gambesón", "Acolchado"],
+    hauberk: ["Hauberk", "Cota larga"],
+    lamellar: ["Laminar", "Armadura laminar"],
+    cuirass: ["Coraza", "Peto"],
+  };
   const nouns =
-    style === "plate"
-      ? ["Coraza", "Placas", "Armadura de placas"]
-      : style === "scale"
-        ? ["Escamas", "Lorica", "Cota de escamas"]
-        : style === "chain"
-          ? ["Cota de malla", "Anillas", "Hauberk"]
-          : style === "padded"
-            ? ["Gambesón", "Acolchado", "Jubón"]
-            : ["Cuero", "Peto de cuero", "Jaco"];
+    extraNouns[genre] ??
+    style === "hoodie"
+      ? ["Buzo", "Hoodie", "Canguro"]
+      : style === "jacket"
+        ? ["Campera", "Chaqueta", "Campera con cierre"]
+        : style === "vest"
+          ? ["Chaleco antibalas", "Chaleco táctico", "Plate carrier"]
+          : style === "plate"
+            ? ["Coraza", "Placas", "Armadura de placas"]
+            : style === "scale"
+              ? ["Escamas", "Lorica", "Cota de escamas"]
+              : style === "chain"
+                ? ["Cota de malla", "Anillas", "Hauberk"]
+                : style === "padded"
+                  ? ["Gambesón", "Acolchado", "Jubón"]
+                  : ["Cuero", "Peto de cuero", "Jaco"];
   return {
     id: nextItemId(seed),
     kind: "armor",
@@ -328,7 +508,7 @@ export function createArmorItem(seed: number): ItemInstance {
       ...emptyCombat(),
       armor: Math.round(armorBase * m * 10) / 10,
       moveSpeedMult:
-        style === "plate" ? 0.9 : style === "scale" ? 0.94 : style === "chain" ? 0.96 : 1,
+        style === "plate" ? 0.9 : style === "scale" ? 0.94 : style === "chain" || style === "vest" ? 0.97 : 1,
       maxHpBonus: Math.round((4 + params.bulk * 12) * m),
     },
     name: pickName(seed, rarity, armorAdj, nouns),
@@ -340,18 +520,62 @@ export function createArmorItem(seed: number): ItemInstance {
 export function createPantsItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
-  const styleRoll = r();
-  const style: PantsParams["style"] =
-    styleRoll < 0.4 ? "cloth" : styleRoll < 0.75 ? "leather" : "plated";
+  const genre = pickStyle(r, PANTS_VISUAL);
+  const style = pantsVisual(genre);
+  const pockets =
+    style === "cargo"
+      ? r() < 0.45
+        ? 6
+        : 4
+      : style === "jeans"
+        ? r() < 0.35
+          ? 5
+          : 4
+        : style === "leather" || style === "cloth"
+          ? r() < 0.55
+            ? 2
+            : r() < 0.75
+              ? 4
+              : 0
+          : style === "jogger"
+            ? r() < 0.4
+              ? 2
+              : 0
+            : 0;
   const params: PantsParams = {
     seed,
-    style,
-    length: 0.5 + r() * 0.5,
-    hue: r(),
+    style: genre,
+    length: style === "jogger" ? 0.55 + r() * 0.25 : 0.5 + r() * 0.5,
+    // jeans: tintes índigo
+    hue: style === "jeans" ? 0.55 + r() * 0.12 : r(),
     rarity,
+    pockets,
+    shellScale: 0.52,
+    waistRise: 1,
   };
   const m = rarityMult(rarity);
-  const armor = style === "plated" ? 4 : style === "leather" ? 2 : 0.5;
+  const armor =
+    style === "plated" ? 4 : style === "leather" ? 2 : style === "cargo" ? 1 : style === "jeans" ? 0.8 : 0.5;
+  const extraNouns: Partial<Record<PantsParams["style"], string[]>> = {
+    shorts: ["Shorts", "Bermudas"],
+    chaps: ["Chaparreras", "Polainas"],
+    kilt: ["Kilt", "Falda"],
+    breeches: ["Calzones", "Bombachas"],
+    fatigues: ["Fatigas", "Pantalón de faena"],
+  };
+  const nouns =
+    extraNouns[genre] ??
+    style === "jeans"
+      ? ["Jeans", "Denim", "Vaqueros"]
+      : style === "jogger"
+        ? ["Joggers", "Pantalón suelto", "Pants"]
+        : style === "cargo"
+          ? ["Cargo", "Pantalón militar", "Táctico"]
+          : style === "plated"
+            ? ["Calzas blindadas", "Pantalón de placas", "Grebas largas"]
+            : style === "leather"
+              ? ["Calzas de cuero", "Pantalón de cuero", "Bragas"]
+              : ["Pantalones", "Calzas", "Pantalón de tela"];
   return {
     id: nextItemId(seed),
     kind: "pants",
@@ -361,10 +585,11 @@ export function createPantsItem(seed: number): ItemInstance {
     stats: {
       ...emptyCombat(),
       armor: Math.round(armor * m * 10) / 10,
-      moveSpeedMult: style === "plated" ? 0.95 : style === "cloth" ? 1.03 : 1,
+      moveSpeedMult:
+        style === "plated" ? 0.95 : style === "jogger" ? 1.05 : style === "cloth" || style === "jeans" ? 1.02 : 1,
       maxHpBonus: Math.round(params.length * 6 * m),
     },
-    name: pickName(seed, rarity, pantsAdj, ["Pantalones", "Calzas", "Grebas"]),
+    name: pickName(seed, rarity, pantsAdj, nouns),
     gridW: 2,
     gridH: 2,
   };
@@ -373,13 +598,14 @@ export function createPantsItem(seed: number): ItemInstance {
 export function createGlovesItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
-  const styleRoll = r();
-  const style: GlovesParams["style"] =
-    styleRoll < 0.4 ? "cloth" : styleRoll < 0.75 ? "leather" : "gauntlet";
+  const genre = pickStyle(r, GLOVE_VISUAL);
+  const style = gloveVisual(genre);
   const params: GlovesParams = {
     seed,
-    style,
-    bulk: 0.3 + r() * 0.7,
+    style: genre,
+    // cloth/gauntlet un poco más abultados; leather más fino
+    bulk:
+      style === "leather" ? 0.12 + r() * 0.35 : style === "cloth" ? 0.25 + r() * 0.4 : 0.35 + r() * 0.45,
     hue: r(),
     rarity,
   };
@@ -399,7 +625,20 @@ export function createGlovesItem(seed: number): ItemInstance {
       moveSpeedMult: 1,
       maxHpBonus: 0,
     },
-    name: pickName(seed, rarity, gloveAdj, ["Guantes", "Mitones", "Guanteletes"]),
+    name: pickName(
+      seed,
+      rarity,
+      gloveAdj,
+      genre === "wraps"
+        ? ["Vendas", "Wraps"]
+        : genre === "mittens"
+          ? ["Mitones", "Manoplas"]
+          : genre === "bracers"
+            ? ["Brazales", "Muñequeras"]
+            : genre === "gauntlet"
+              ? ["Guanteletes", "Manoplas de placas"]
+              : ["Guantes", "Guantes de cuero"],
+    ),
     gridW: 2,
     gridH: 2,
   };
@@ -408,12 +647,11 @@ export function createGlovesItem(seed: number): ItemInstance {
 export function createBeltItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
-  const styleRoll = r();
-  const style: BeltParams["style"] =
-    styleRoll < 0.4 ? "rope" : styleRoll < 0.75 ? "leather" : "plated";
+  const genre = pickStyle(r, BELT_VISUAL);
+  const style = beltVisual(genre);
   const params: BeltParams = {
     seed,
-    style,
+    style: genre,
     width: 0.08 + r() * 0.1,
     hue: r(),
     rarity,
@@ -431,7 +669,18 @@ export function createBeltItem(seed: number): ItemInstance {
       moveSpeedMult: 1,
       maxHpBonus: Math.round((2 + params.width * 40) * m),
     },
-    name: pickName(seed, rarity, beltAdj, ["Cinturón", "Faja", "Cinto"]),
+    name: pickName(
+      seed,
+      rarity,
+      beltAdj,
+      genre === "sash"
+        ? ["Faja", "Banda"]
+        : genre === "chainbelt"
+          ? ["Cinto de cadena", "Cinturón de eslabones"]
+          : genre === "utility"
+            ? ["Cinto táctico", "Cinturón de faena"]
+            : ["Cinturón", "Cinto"],
+    ),
     gridW: 2,
     gridH: 1,
   };
@@ -649,6 +898,87 @@ export function createCrossbowItem(seed: number): ItemInstance {
   };
 }
 
+const ringAdj: Record<Rarity, string[]> = {
+  common: ["Simple", "Opaco", "Gastado"],
+  uncommon: ["Pulido", "Fino", "Grabado"],
+  rare: ["Rúnico", "Noble", "Sellado"],
+  epic: ["Ancestral", "Estelar", "Maldito"],
+};
+
+export function createRingItem(seed: number): ItemInstance {
+  const r = rngFromSeed(seed);
+  const rarity = pickRarity(r);
+  const styles: RingParams["style"][] = ["band", "signet", "gem", "skull", "braided"];
+  const gems: RingParams["gem"][] = ["none", "ruby", "sapphire", "emerald", "diamond"];
+  const style = styles[Math.floor(r() * styles.length)]!;
+  const gem = style === "gem" || style === "signet" ? gems[1 + Math.floor(r() * (gems.length - 1))]! : r() < 0.3 ? gems[1 + Math.floor(r() * 4)]! : "none";
+  const params: RingParams = { seed, style, gem, metalHue: r(), rarity };
+  const m = rarityMult(rarity);
+  const nouns =
+    style === "signet"
+      ? ["Sello", "Anillo de sello"]
+      : style === "skull"
+        ? ["Anillo calavera", "Sortija de hueso"]
+        : style === "braided"
+          ? ["Anillo trenzado", "Sortija de lazo"]
+          : style === "gem"
+            ? ["Anillo de gema", "Sortija"]
+            : ["Anillo", "Banda", "Aro"];
+  return {
+    id: nextItemId(seed),
+    kind: "ring",
+    equipSlot: "ring1",
+    seed,
+    params,
+    stats: {
+      ...emptyCombat(),
+      damage: style === "skull" ? Math.round(0.4 * m * 10) / 10 : 0,
+      armor: style === "band" || style === "braided" ? Math.round(0.4 * m * 10) / 10 : 0,
+      attackSpeed: style === "signet" ? 1.04 : 1,
+      moveSpeedMult: 1,
+      maxHpBonus: gem === "none" ? Math.round(4 * m) : Math.round(10 * m),
+    },
+    name: pickName(seed, rarity, ringAdj, nouns),
+    gridW: 1,
+    gridH: 1,
+  };
+}
+
+export function createAmuletItem(seed: number): ItemInstance {
+  const r = rngFromSeed(seed);
+  const rarity = pickRarity(r);
+  const styles: AmuletParams["style"][] = ["pendant", "relic", "tooth", "medallion", "charm"];
+  const style = styles[Math.floor(r() * styles.length)]!;
+  const params: AmuletParams = { seed, style, metalHue: r(), rarity };
+  const m = rarityMult(rarity);
+  const nouns =
+    style === "relic"
+      ? ["Reliquia", "Amuleto sagrado"]
+      : style === "tooth"
+        ? ["Colmillo", "Diente de bestia"]
+        : style === "medallion"
+          ? ["Medallón", "Medalla"]
+          : style === "charm"
+            ? ["Dije", "Talismán"]
+            : ["Amuleto", "Colgante", "Pendiente"];
+  return {
+    id: nextItemId(seed),
+    kind: "amulet",
+    equipSlot: "amulet",
+    seed,
+    params,
+    stats: {
+      ...emptyCombat(),
+      armor: style === "medallion" ? Math.round(0.6 * m * 10) / 10 : 0,
+      moveSpeedMult: 1,
+      maxHpBonus: Math.round((12 + (style === "relic" ? 10 : 0)) * m),
+    },
+    name: pickName(seed, rarity, ringAdj, nouns),
+    gridW: 1,
+    gridH: 1,
+  };
+}
+
 export function createRandomLootItem(): ItemInstance {
   const seed = randomSwordSeed();
   const roll = Math.random();
@@ -664,6 +994,8 @@ export function createRandomLootItem(): ItemInstance {
   if (roll < 0.74) return createHelmetItem(seed);
   if (roll < 0.8) return createBootsItem(seed);
   if (roll < 0.86) return createShieldItem(seed);
-  if (roll < 0.92) return createGlovesItem(seed);
-  return createBeltItem(seed);
+  if (roll < 0.9) return createGlovesItem(seed);
+  if (roll < 0.94) return createBeltItem(seed);
+  if (roll < 0.97) return createRingItem(seed);
+  return createAmuletItem(seed);
 }

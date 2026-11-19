@@ -11,7 +11,7 @@ import {
   type EquipMeshes,
 } from "./equipAttach";
 import { buildItemMesh, buildProjectileMesh, disposeObject3D } from "./itemMesh";
-import { createHero } from "./loadHero";
+import { createHero, makeLookalike } from "./loadHero";
 
 export type RenderHandles = {
   renderer: THREE.WebGLRenderer;
@@ -26,12 +26,30 @@ export type RenderHandles = {
   dispose: () => void;
 };
 
-export async function createRenderer(container: HTMLElement): Promise<RenderHandles> {
+/** Caída al suelo con rebote corto. startY → groundY. */
+function dropFallY(age: number, startY: number, groundY: number): { y: number; airborne: boolean } {
+  const fallT = 0.42;
+  if (age < fallT) {
+    const u = age / fallT;
+    // Aceleración (ease-in): empieza alto y cae
+    const y = startY + (groundY - startY) * (u * u);
+    return { y, airborne: true };
+  }
+  const b = age - fallT;
+  if (b < 0.2) {
+    const u = b / 0.2;
+    const bounce = 0.2 * (1 - u) * Math.sin(u * Math.PI);
+    return { y: groundY + bounce * (startY - groundY) * 0.35, airborne: true };
+  }
+  return { y: groundY, airborne: false };
+}
+
+export async function createRenderer(container: HTMLElement, mapSize = 180): Promise<RenderHandles> {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x7a7358);
   scene.fog = new THREE.Fog(0x7a7358, 45, 95);
 
-  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
+  const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 420);
   camera.position.set(12, 15, 12);
   camera.lookAt(0, 0, 0);
 
@@ -59,37 +77,82 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
   sun.shadow.mapSize.set(1024, 1024);
   sun.shadow.camera.near = 1;
   sun.shadow.camera.far = 80;
+  // Menos acne / bandas negras en uniones de shells del héroe
+  sun.shadow.bias = -0.0008;
+  sun.shadow.normalBias = 0.035;
   scene.add(sun);
 
+  const n2 = (ix: number, iy: number) => {
+    const n = Math.sin(ix * 127.1 + iy * 311.7) * 43758.5453;
+    return n - Math.floor(n);
+  };
+  const vnoise = (x: number, y: number) => {
+    const x0 = Math.floor(x);
+    const y0 = Math.floor(y);
+    const fx = x - x0;
+    const fy = y - y0;
+    const sx = fx * fx * (3 - 2 * fx);
+    const sy = fy * fy * (3 - 2 * fy);
+    const n00 = n2(x0, y0);
+    const n10 = n2(x0 + 1, y0);
+    const n01 = n2(x0, y0 + 1);
+    const n11 = n2(x0 + 1, y0 + 1);
+    return n00 + (n10 - n00) * sx + (n01 - n00) * sy + (n00 - n10 - n01 + n11) * sx * sy;
+  };
+  const fbm = (x: number, y: number) => vnoise(x, y) * 0.65 + vnoise(x * 2.1, y * 2.1) * 0.35;
+  const groundGeo = new THREE.PlaneGeometry(mapSize, mapSize, 72, 72);
+  groundGeo.rotateX(-Math.PI / 2);
+  const gPos = groundGeo.attributes.position;
+  const gCol = new Float32Array(gPos.count * 3);
+  const dirt = new THREE.Color(0x5a4a32);
+  const grassC = new THREE.Color(0x4c6b30);
+  const tint = new THREE.Color();
+  for (let i = 0; i < gPos.count; i++) {
+    const n = fbm(gPos.getX(i) * 0.045, gPos.getZ(i) * 0.045);
+    gPos.setY(i, (n - 0.5) * 0.7);
+    tint.copy(dirt).lerp(grassC, Math.min(1, Math.max(0, (n - 0.38) * 2.4)));
+    gCol[i * 3] = tint.r;
+    gCol[i * 3 + 1] = tint.g;
+    gCol[i * 3 + 2] = tint.b;
+  }
+  groundGeo.setAttribute("color", new THREE.BufferAttribute(gCol, 3));
+  groundGeo.computeVertexNormals();
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(80, 80),
-    new THREE.MeshStandardMaterial({ color: 0x5a4a32, roughness: 1, metalness: 0 }),
+    groundGeo,
+    new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, metalness: 0 }),
   );
-  ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
 
-  // Parches de tierra / hierba seca
-  const patchMat = new THREE.MeshStandardMaterial({ color: 0x4a5a30, roughness: 1 });
-  const dirtMat = new THREE.MeshStandardMaterial({ color: 0x3e3224, roughness: 1 });
-  for (let i = 0; i < 28; i++) {
-    const patch = new THREE.Mesh(
-      new THREE.CircleGeometry(1.2 + Math.random() * 2.2, 7),
-      Math.random() > 0.45 ? patchMat : dirtMat,
-    );
-    patch.rotation.x = -Math.PI / 2;
-    patch.position.set((Math.random() - 0.5) * 70, 0.015, (Math.random() - 0.5) * 70);
-    scene.add(patch);
+  const spread = mapSize * 0.92;
+  const grass = new THREE.InstancedMesh(
+    new THREE.ConeGeometry(0.07, 0.42, 3),
+    new THREE.MeshStandardMaterial({ color: 0x3f6a28, roughness: 1 }),
+    480,
+  );
+  grass.castShadow = false;
+  const dummy = new THREE.Object3D();
+  for (let i = 0; i < 480; i++) {
+    const x = (Math.random() - 0.5) * spread;
+    const z = (Math.random() - 0.5) * spread;
+    dummy.position.set(x, (fbm(x * 0.045, z * 0.045) - 0.5) * 0.7, z);
+    dummy.rotation.y = Math.random() * Math.PI;
+    dummy.scale.setScalar(0.7 + Math.random() * 1.1);
+    dummy.updateMatrix();
+    grass.setMatrixAt(i, dummy.matrix);
   }
+  scene.add(grass);
 
   // Rocas toscas
   const rockMat = new THREE.MeshStandardMaterial({ color: 0x5c574c, roughness: 0.95, metalness: 0.05 });
-  for (let i = 0; i < 14; i++) {
+  for (let i = 0; i < Math.round(14 * (mapSize / 40)); i++) {
     const rock = new THREE.Mesh(
       new THREE.DodecahedronGeometry(0.4 + Math.random() * 0.7, 0),
       rockMat,
     );
-    rock.position.set((Math.random() - 0.5) * 60, 0.25, (Math.random() - 0.5) * 60);
+    const rx = (Math.random() - 0.5) * spread;
+    const rz = (Math.random() - 0.5) * spread;
+    rock.position.set(rx, 0.25 + (fbm(rx * 0.045, rz * 0.045) - 0.5) * 0.7, rz);
     rock.rotation.set(Math.random(), Math.random(), Math.random());
     rock.castShadow = true;
     rock.receiveShadow = true;
@@ -98,9 +161,11 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
 
   // Tocones / postes de madera
   const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a3018, roughness: 0.95 });
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < Math.round(8 * (mapSize / 40)); i++) {
     const stump = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.32, 0.55, 6), woodMat);
-    stump.position.set((Math.random() - 0.5) * 50, 0.28, (Math.random() - 0.5) * 50);
+    const sx = (Math.random() - 0.5) * spread;
+    const sz = (Math.random() - 0.5) * spread;
+    stump.position.set(sx, 0.28 + (fbm(sx * 0.045, sz * 0.045) - 0.5) * 0.7, sz);
     stump.castShadow = true;
     scene.add(stump);
   }
@@ -171,10 +236,15 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
     renderer.setSize(w, h, false);
   }
 
-  function ensureAi(id: string): AiBodyHandle {
+  function ensureAi(id: string, bug: boolean): AiBodyHandle {
     let h = aiMeshes.get(id);
     if (!h) {
-      h = createAiBody(0x6e3b2e);
+      if (bug) {
+        h = createAiBody(0x3d6b32);
+        h.root.scale.setScalar(0.62);
+      } else {
+        h = makeLookalike();
+      }
       scene.add(h.root);
       aiMeshes.set(id, h);
     }
@@ -237,8 +307,10 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
 
     const p = world.player;
     playerMesh.position.x = p.pos.x;
+    playerMesh.position.y = p.height + (p.crouching ? -0.32 : 0);
     playerMesh.position.z = p.pos.y;
     playerMesh.rotation.y = p.facing;
+    playerMesh.scale.y = p.crouching ? 0.72 : 1;
     playerMesh.visible = p.alive;
     hero.setHurt(p.hurtTimer > 0);
 
@@ -247,21 +319,24 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
     const swinging = p.attackSwing > 0 && !world.blocking;
     if (swinging) {
       const u = 1 - Math.min(1, p.attackSwing / Math.max(0.05, world.attackSwingMax || SLASH_DURATION));
-      hero.applyCombat(u, world.combatAnim, false);
+      hero.applyCombat(u, world.combatAnim, false, world.slashVariant);
       const showArc =
         world.combatAnim === "slash" ||
         world.combatAnim === "dualR" ||
         world.combatAnim === "dualL" ||
         world.combatAnim === "twohand";
-      const mid = u > 0.28 && u < 0.62 ? 1 : 0.2;
-      swingMesh.visible = showArc && u > 0.25 && u < 0.68;
-      swingMat.opacity = 0.04 + mid * 0.16 * Math.sin(Math.min(1, Math.max(0, (u - 0.28) / 0.28)) * Math.PI);
-      swingMesh.scale.setScalar(0.9 + u * 0.12);
-      swingMesh.rotation.z = -0.25 + u * 0.7;
-      if (u > 0.28 && u < 0.45) shake = 0.12;
-    } else if (world.blocking) {
-      hero.applyCombat(1, "block", true);
-      swingMesh.visible = false;
+      const cut = u > 0.2 && u < 0.58;
+      const mid = cut ? 1 : 0.15;
+      const arcT = Math.min(1, Math.max(0, (u - 0.18) / 0.42));
+      swingMesh.visible = showArc && u > 0.16 && u < 0.72;
+      swingMat.opacity = 0.03 + mid * 0.2 * Math.sin(arcT * Math.PI);
+      swingMesh.scale.setScalar(0.88 + arcT * 0.22);
+      // Arco diagonal alineado al corte (variante)
+      const v = world.slashVariant % 3;
+      const baseZ = v === 1 ? 0.55 : v === 2 ? -0.1 : -0.55;
+      const sweep = v === 1 ? -1.15 : v === 2 ? 0.35 : 1.2;
+      swingMesh.rotation.z = baseZ + arcT * sweep;
+      if (u > 0.28 && u < 0.42) shake = 0.12;
     } else {
       swingMesh.visible = false;
     }
@@ -278,11 +353,11 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
             : off?.kind === "shield"
               ? "block"
               : "onehand";
-    hero.update(dt, p.walkPhase, p.moving, swinging || world.blocking, p.running, stance);
+    hero.update(dt, p.walkPhase, p.moving, swinging, p.running, stance, world.blocking);
 
     shake = Math.max(0, shake - 0.016);
-    const camTarget = new THREE.Vector3(p.pos.x, 0.9, p.pos.y);
-    const camPos = camTarget.clone().add(new THREE.Vector3(5, 5.5, 6));
+    const camTarget = new THREE.Vector3(p.pos.x, 0.9 + p.height * 0.45, p.pos.y);
+    const camPos = camTarget.clone().add(new THREE.Vector3(5.4, 5.95, 6.5));
     if (shake > 0) {
       camPos.x += (Math.random() - 0.5) * shake * 2;
       camPos.y += (Math.random() - 0.5) * shake * 1.2;
@@ -295,7 +370,7 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
       const show = ai.alive || ai.deathTimer > 0;
       if (!show) continue;
       presentIds.add(ai.id);
-      const body = ensureAi(ai.id);
+      const body = ensureAi(ai.id, ai.role !== "hunter");
       body.root.visible = true;
       body.root.position.x = ai.pos.x;
       body.root.position.z = ai.pos.y;
@@ -319,7 +394,7 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
     let lootBuilds = LOOT_BUILDS_PER_FRAME;
     for (const drop of world.loot) {
       lootIds.add(drop.id);
-      const y = 0.35 + Math.sin(world.time * 3 + drop.pos.x) * 0.06;
+      const fall = dropFallY(drop.age, 1.25, 0.14);
       let mesh = lootMeshes.get(drop.id);
       if (!mesh && lootBuilds > 0) {
         mesh = ensureLootMesh(drop.id, drop.item.id, () =>
@@ -328,12 +403,16 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
         lootBuilds -= 1;
       }
       if (mesh) {
-        mesh.position.set(drop.pos.x, y, drop.pos.y);
-        mesh.rotation.y = world.time * 1.4;
+        mesh.position.set(drop.pos.x, fall.y, drop.pos.y);
+        mesh.rotation.y = fall.airborne
+          ? drop.age * 6.5 + drop.pos.x
+          : drop.pos.x * 2.1;
+        mesh.rotation.x = fall.airborne ? drop.age * 3.2 : 0.35;
+        mesh.rotation.z = fall.airborne ? Math.sin(drop.age * 8) * 0.4 : 0.15;
       } else {
         const ph = ensureLootPlaceholder(drop.id);
-        ph.position.set(drop.pos.x, y, drop.pos.y);
-        ph.rotation.y = world.time * 2.2;
+        ph.position.set(drop.pos.x, fall.y, drop.pos.y);
+        ph.rotation.y = fall.airborne ? drop.age * 8 : drop.pos.x;
       }
     }
     for (const [id, mesh] of lootMeshes) {
@@ -360,9 +439,9 @@ export async function createRenderer(container: HTMLElement): Promise<RenderHand
         scene.add(mesh);
         coinMeshes.set(c.id, mesh);
       }
-      const bob = 0.22 + Math.sin(world.time * 4 + c.pos.x) * 0.05;
-      mesh.position.set(c.pos.x, bob, c.pos.y);
-      mesh.rotation.z = world.time * 3;
+      const fall = dropFallY(c.age, 0.95, 0.06);
+      mesh.position.set(c.pos.x, fall.y, c.pos.y);
+      mesh.rotation.z = fall.airborne ? c.age * 10 : c.pos.x * 3;
       mesh.scale.setScalar(0.85 + Math.min(2, c.amount) * 0.12);
     }
     for (const [id, mesh] of coinMeshes) {

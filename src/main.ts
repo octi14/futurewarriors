@@ -18,7 +18,7 @@ import { createRenderer } from "./render/scene";
 import { bindHud } from "./render/hud";
 
 const app = document.getElementById("app")!;
-const world = createWorld({ mapSize: 40, aiCount: 6 });
+const world = createWorld({ mapSize: 180, aiCount: 10, bugCount: 50 });
 const hud = bindHud({
   onEquipBag: (id) => equipFromBag(world, id),
   onUnequip: (slot) => unequipSlot(world, slot),
@@ -39,7 +39,7 @@ let hasPointer = false;
 let prevPointerX = pointerClientX;
 let prevPointerY = pointerClientY;
 
-const render = await createRenderer(app);
+const render = await createRenderer(app, world.config.mapSize);
 
 function projectWorld(worldX: number, worldZ: number, height: number) {
   projectScratch.set(worldX, height, worldZ).project(render.camera);
@@ -64,8 +64,12 @@ function mouseToGround(clientX: number, clientY: number): { x: number; y: number
 }
 
 const keys = new Set<string>();
+let jumpQueued = false;
 function sprintHeld(): boolean {
   return keys.has("ShiftLeft") || keys.has("ShiftRight");
+}
+function crouchHeld(): boolean {
+  return keys.has("KeyX");
 }
 function uiOpen(): boolean {
   return world.inventoryOpen || world.characterOpen;
@@ -78,7 +82,7 @@ window.addEventListener("keydown", (e) => {
   keys.add(e.code);
   if (e.code === "Space") {
     e.preventDefault();
-    doAttack();
+    if (!uiOpen()) jumpQueued = true;
   }
   if (e.code === "KeyE") pickupNearest(world);
   if (e.code === "KeyI") {
@@ -141,6 +145,8 @@ function readInput(): InputState {
   prevPointerX = pointerClientX;
   prevPointerY = pointerClientY;
 
+  const jump = jumpQueued;
+  jumpQueued = false;
   return {
     moveX,
     moveY,
@@ -149,6 +155,8 @@ function readInput(): InputState {
     hasAim: ground !== null,
     aimMoved,
     sprint: sprintHeld(),
+    jump,
+    crouch: !uiOpen() && crouchHeld(),
   };
 }
 

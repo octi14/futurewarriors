@@ -39,6 +39,7 @@
       <div class="row">
         <button type="button" id="btn-walk">Caminar: OFF</button>
         <button type="button" id="btn-slash">Espadazo</button>
+        <button type="button" id="btn-twohand">2 manos</button>
         <button type="button" id="btn-spin">Auto-rotar: OFF</button>
       </div>
       <label><input type="checkbox" id="chk-wire" /> Wireframe</label>
@@ -55,7 +56,6 @@
         <button type="button" data-kind="throw">Arrojable</button>
         <button type="button" class="clear" data-clear="weapon">✕</button>
       </div>
-
       <div class="lbl">Offhand</div>
       <div class="row" id="gear-offhand">
         <button type="button" data-kind="shield">Escudo</button>
@@ -63,7 +63,7 @@
         <button type="button" class="clear" data-clear="offhand">✕</button>
       </div>
 
-      <div class="lbl">Casco / Armadura / Cinto / Botas</div>
+      <div class="lbl">Casco / Armadura / Cinto / Pantalón / Botas</div>
       <div class="row">
         <button type="button" data-kind="helmet">Casco</button>
         <button type="button" class="clear" data-clear="helmet">✕</button>
@@ -73,8 +73,32 @@
       <div class="row">
         <button type="button" data-kind="belt">Cinturón</button>
         <button type="button" class="clear" data-clear="belt">✕</button>
+        <button type="button" data-kind="pants">Pantalón</button>
+        <button type="button" class="clear" data-clear="pants">✕</button>
+      </div>
+      <div class="row">
         <button type="button" data-kind="boots">Botas</button>
         <button type="button" class="clear" data-clear="boots">✕</button>
+        <button type="button" data-kind="gloves">Guantes</button>
+        <button type="button" class="clear" data-clear="gloves">✕</button>
+      </div>
+      <div class="lbl">TEMP botas detalle (borrar al bakear)</div>
+      <div class="row" id="boot-style-btns">
+        <button type="button" data-boot="military">Militar</button>
+        <button type="button" data-boot="combat">Combat</button>
+        <button type="button" data-boot="trail">Trekking</button>
+        <button type="button" data-boot="greaves" data-tone="gold">Greaves</button>
+        <button type="button" data-boot="plate" data-tone="gold">Plate</button>
+        <button type="button" data-boot="canvas">Lona</button>
+      </div>
+      <div class="row" style="display:flex;flex-direction:column;gap:2px">
+        <label>y0 <input type="range" id="boot-y0" min="-0.55" max="0.15" step="0.01" value="-0.3" style="width:90%" /></label>
+        <label>y1 <input type="range" id="boot-y1" min="-0.35" max="0.5" step="0.01" value="0.12" style="width:90%" /></label>
+        <label>zPad <input type="range" id="boot-zpad" min="0" max="0.25" step="0.005" value="0.04" style="width:90%" /></label>
+        <label>pitch <input type="range" id="boot-pitch" min="0" max="3" step="0.05" value="1.65" style="width:90%" /></label>
+        <label>toeLen <input type="range" id="boot-toelen" min="0.1" max="0.6" step="0.01" value="0.22" style="width:90%" /></label>
+        <label>toePad <input type="range" id="boot-toepad" min="0" max="0.02" step="0.0005" value="0.004" style="width:90%" /></label>
+        <span id="boot-tune-readout" class="hint">y0 -0.20 · y1 0.08 · z 0.040 · p 1.00</span>
       </div>
       <div class="row">
         <button type="button" class="clear" id="btn-clear-all">Limpiar todo</button>

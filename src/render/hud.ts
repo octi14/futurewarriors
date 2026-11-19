@@ -24,9 +24,9 @@ function itemGlowVars(item: ItemInstance): string {
     (item.params as { hue?: number }).hue ??
     (item.params as { leatherHue?: number }).leatherHue ??
     0.5;
-  const sat = rarity === "epic" ? 55 : rarity === "rare" ? 45 : rarity === "uncommon" ? 35 : 18;
-  const lit = rarity === "epic" ? 62 : rarity === "rare" ? 58 : rarity === "uncommon" ? 52 : 48;
-  const str = rarity === "epic" ? 1 : rarity === "rare" ? 0.65 : rarity === "uncommon" ? 0.35 : 0.12;
+  const sat = rarity === "epic" ? 48 : rarity === "rare" ? 40 : rarity === "uncommon" ? 30 : 16;
+  const lit = rarity === "epic" ? 56 : rarity === "rare" ? 52 : rarity === "uncommon" ? 48 : 44;
+  const str = rarity === "epic" ? 0.55 : rarity === "rare" ? 0.32 : rarity === "uncommon" ? 0.16 : 0.06;
   return `--glow: hsl(${Math.floor(hue * 360)} ${sat}% ${lit}%); --glow-str: ${str}`;
 }
 
@@ -146,8 +146,21 @@ export function bindHud(handlers: {
     }
     for (const p of world.bag) itemIndex.set(p.item.id, p.item);
 
+    const occ = new Map<number, { rarity: string; glow: string }>();
+    for (const p of world.bag) {
+      const rarity = (p.item.params as { rarity: string }).rarity;
+      const glow = itemGlowVars(p.item);
+      for (let dy = 0; dy < p.item.gridH; dy++) {
+        for (let dx = 0; dx < p.item.gridW; dx++) {
+          occ.set((p.y + dy) * BAG_COLS + (p.x + dx), { rarity, glow });
+        }
+      }
+    }
     const cells = Array.from({ length: BAG_COLS * BAG_ROWS }, (_, i) => {
-      return `<div class="bag-cell" style="grid-column:${(i % BAG_COLS) + 1};grid-row:${Math.floor(i / BAG_COLS) + 1}"></div>`;
+      const o = occ.get(i);
+      const base = `grid-column:${(i % BAG_COLS) + 1};grid-row:${Math.floor(i / BAG_COLS) + 1}`;
+      if (!o) return `<div class="bag-cell" style="${base}"></div>`;
+      return `<div class="bag-cell occupied rarity-${o.rarity}" style="${base};${o.glow}"></div>`;
     }).join("");
 
     const itemsHtml = world.bag
@@ -196,23 +209,23 @@ export function bindHud(handlers: {
     invEl.innerHTML = `
       <div class="inv-title">
         <span>Inventario <span style="opacity:.65;font-weight:400">(I)</span></span>
-        <span class="inv-coins">${world.coins} 🪙</span>
+        <span class="inv-coins"><svg class="coin-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="#c9a227" stroke="#7a5a10" stroke-width="1.2"/><circle cx="8" cy="8" r="4.5" fill="none" stroke="#f0d878" stroke-width="1"/><text x="8" y="11" text-anchor="middle" font-size="7" font-weight="700" fill="#6a4a08">G</text></svg>${world.coins}</span>
       </div>
       <div class="inv-body">
         <div class="inv-equip">
           <div class="inv-section">Equipo</div>
           <div class="paper-doll">
-            <div class="pd-amulet">${eqSlot("amulet", "sm")}</div>
+            <div class="pd-amulet">${eqSlot("amulet", "xs")}</div>
             <div class="pd-helmet">${eqSlot("helmet")}</div>
-            <div class="pd-weapon">${eqSlot("weapon")}</div>
-            <div class="pd-armor">${eqSlot("armor")}</div>
-            <div class="pd-offhand">${eqSlot("offhand")}</div>
+            <div class="pd-weapon">${eqSlot("weapon", "lg")}</div>
+            <div class="pd-armor">${eqSlot("armor", "lg")}</div>
+            <div class="pd-offhand">${eqSlot("offhand", "lg")}</div>
             <div class="pd-gloves">${eqSlot("gloves", "sm")}</div>
             <div class="pd-belt">${eqSlot("belt", "sm")}</div>
             <div class="pd-pants">${eqSlot("pants", "sm")}</div>
             <div class="pd-boots">${eqSlot("boots", "sm")}</div>
-            <div class="pd-ring1">${eqSlot("ring1", "sm")}</div>
-            <div class="pd-ring2">${eqSlot("ring2", "sm")}</div>
+            <div class="pd-ring1">${eqSlot("ring1", "xs")}</div>
+            <div class="pd-ring2">${eqSlot("ring2", "xs")}</div>
           </div>
         </div>
         <div class="inv-storage">
@@ -240,7 +253,7 @@ export function bindHud(handlers: {
     charEl.innerHTML = `
       <div class="char-title">
         <span>Personaje <span style="opacity:.65;font-weight:400">(C)</span></span>
-        <span class="char-coins">${world.coins} 🪙</span>
+        <span class="char-coins"><svg class="coin-icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="7" fill="#c9a227" stroke="#7a5a10" stroke-width="1.2"/><circle cx="8" cy="8" r="4.5" fill="none" stroke="#f0d878" stroke-width="1"/><text x="8" y="11" text-anchor="middle" font-size="7" font-weight="700" fill="#6a4a08">G</text></svg>${world.coins}</span>
       </div>
       <div class="char-section">Atributos</div>
       <div class="char-core">

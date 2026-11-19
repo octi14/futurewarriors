@@ -1,5 +1,14 @@
 import * as THREE from "three";
+import {
+  armorVisual,
+  beltVisual,
+  bootVisual,
+  gloveVisual,
+  pantsVisual,
+  shieldVisual,
+} from "../shared/presets";
 import type {
+  AmuletParams,
   ArmorParams,
   AxeParams,
   BeltParams,
@@ -12,6 +21,7 @@ import type {
   PantsParams,
   Projectile,
   Rarity,
+  RingParams,
   ShieldParams,
   SwordParams,
   ThrowParams,
@@ -39,16 +49,15 @@ export function makeMetalMat(
   const rough =
     rarity === "epic" ? 0.1 : rarity === "rare" ? 0.14 : rarity === "uncommon" ? 0.2 : 0.26;
   const color = metalColor(hue, rarity);
-  const emissive = color.clone().multiplyScalar(
-    rarity === "epic" ? 0.12 : rarity === "rare" ? 0.07 : rarity === "uncommon" ? 0.035 : 0.015,
-  );
+  const g = rarityGlowStrength(rarity);
+  const emissive = color.clone().multiplyScalar(0.03 + g * 0.1);
   return new THREE.MeshStandardMaterial({
     color,
     metalness: Math.min(1, 0.92 + polish * 0.06),
     roughness: Math.max(0.06, rough / polish),
-    envMapIntensity: 1.15 + polish * 0.35,
+    envMapIntensity: 1.05 + polish * 0.28,
     emissive,
-    emissiveIntensity: 1,
+    emissiveIntensity: 0.3 + g * 0.55,
   });
 }
 
@@ -60,18 +69,18 @@ export function makeEdgeMat(hue: number, rarity: Rarity): THREE.MeshStandardMate
     color: c,
     metalness: 1,
     roughness: 0.06,
-    envMapIntensity: 1.8,
-    emissive: c.clone().multiplyScalar(0.12 + glow * 0.55),
-    emissiveIntensity: 0.8 + glow * 1.2,
+    envMapIntensity: 1.5,
+    emissive: c.clone().multiplyScalar(0.06 + glow * 0.22),
+    emissiveIntensity: 0.35 + glow * 0.55,
   });
 }
 
-/** 0..1 intensidad de aura por rareza. */
+/** 0..1 sutil: common apenas se nota, epic claro pero sin flare. */
 export function rarityGlowStrength(rarity: Rarity): number {
-  if (rarity === "epic") return 1;
-  if (rarity === "rare") return 0.58;
-  if (rarity === "uncommon") return 0.28;
-  return 0.06;
+  if (rarity === "epic") return 0.55;
+  if (rarity === "rare") return 0.32;
+  if (rarity === "uncommon") return 0.16;
+  return 0.05;
 }
 
 export function itemHue(item: ItemInstance): number {
@@ -88,35 +97,34 @@ export function itemRarity(item: ItemInstance): Rarity {
  * PointLight opcional y tenue solo si `lights` (equipado); nunca en loot.
  */
 export function applyItemGlow(
-  root: THREE.Group,
+  root: THREE.Object3D,
   hue: number,
   rarity: Rarity,
   opts?: { lights?: boolean },
 ): void {
   const strength = rarityGlowStrength(rarity);
-  if (strength < 0.05) return;
   const color = metalColor(hue, rarity);
 
   root.traverse((o) => {
-    if (!(o instanceof THREE.Mesh)) return;
+    if (!(o instanceof THREE.Mesh) && !(o instanceof THREE.SkinnedMesh)) return;
     const mats = Array.isArray(o.material) ? o.material : [o.material];
     for (const mat of mats) {
       if (!(mat instanceof THREE.MeshStandardMaterial)) continue;
       const metalish = mat.metalness > 0.25;
-      // Filo/metal brilla más; cuero/tela apenas tiñe
-      const glowAmt = metalish ? 0.22 + strength * 0.85 : 0.04 + strength * 0.28;
+      // Filo/metal un poco más; tela/cuero apenas tiñe — nunca exagerado
+      const glowAmt = metalish ? 0.07 + strength * 0.32 : 0.025 + strength * 0.14;
       mat.emissive.copy(color).multiplyScalar(glowAmt);
-      mat.emissiveIntensity = 0.55 + strength * 1.8;
-      if (metalish) mat.envMapIntensity = Math.min(2.2, (mat.envMapIntensity || 1) + strength * 0.6);
+      mat.emissiveIntensity = 0.28 + strength * 0.65;
+      if (metalish) mat.envMapIntensity = Math.min(1.6, (mat.envMapIntensity || 1) + strength * 0.25);
     }
   });
 
   // Halo de luz real muy suave (ilumina el piso cerca), no esfera visible
-  if (opts?.lights && strength >= 0.28) {
+  if (opts?.lights && strength >= 0.3) {
     const light = new THREE.PointLight(
       color,
-      0.12 + strength * 0.45,
-      0.9 + strength * 1.1,
+      0.06 + strength * 0.22,
+      0.7 + strength * 0.7,
       2,
     );
     light.position.set(0, 0.06, 0);
@@ -131,13 +139,12 @@ function leatherColor(hue: number): THREE.Color {
 
 function makeLeatherMat(hue: number, darker = false): THREE.MeshStandardMaterial {
   const c = leatherColor(hue);
-  if (darker) c.offsetHSL(0, 0.02, -0.08);
+  if (darker) c.offsetHSL(0, 0.02, -0.1);
   return new THREE.MeshStandardMaterial({
     color: c,
-    roughness: 0.72,
-    metalness: 0.04,
-    // leve brillo de cuero engrasado
-    envMapIntensity: 0.45,
+    roughness: 0.86,
+    metalness: 0.02,
+    envMapIntensity: 0.28,
   });
 }
 
@@ -153,7 +160,7 @@ function makeWoodMat(hue = 0.08, lit = 0.28): THREE.MeshStandardMaterial {
 /** Hira-shuriken (placa fina + orificio central), silueta tipo senban/juji. */
 function buildShurikenMesh(params: ThrowParams): THREE.Group {
   const g = new THREE.Group();
-  const s = 0.16 + params.size * 0.22;
+  const s = 0.006 + params.size * 0.22;
   const steel = makeMetalMat(params.metalHue, params.rarity, { polish: 1.15 });
   steel.color.offsetHSL(0, -0.02, -0.12);
   steel.roughness = 0.32;
@@ -228,7 +235,8 @@ function makeSingleBoot(
 
   const soleH = Math.max(0.03, params.sole);
   const shaftH = Math.max(0.18, params.height);
-  const rTop = params.style === "light" ? 0.055 : greaves ? 0.07 : 0.065;
+  const rTop =
+    params.style === "canvas" || params.style === "sport" ? 0.055 : greaves ? 0.07 : 0.065;
   const rBot = params.style === "trail" ? 0.075 : greaves ? 0.08 : 0.07;
 
   // Caña cónica (cilindro ahusado)
@@ -303,7 +311,8 @@ function makeSingleBoot(
   return boot;
 }
 
-function buildBootsMesh(params: BootsParams): THREE.Group {
+function buildBootsMesh(paramsIn: BootsParams): THREE.Group {
+  const params = { ...paramsIn, style: bootVisual(paramsIn.style) };
   const g = new THREE.Group();
   const leather = makeLeatherMat(params.leatherHue);
   const leatherDark = makeLeatherMat(params.leatherHue, true);
@@ -350,6 +359,17 @@ export function buildWornBootMesh(params: BootsParams): THREE.Group {
 /** Material de armadura según estilo + acabado (bare/painted/polished/darkened). */
 function makeArmorSurfaceMat(params: ArmorParams): THREE.MeshStandardMaterial {
   const { style, finish, hue, rarity } = params;
+  if (style === "hoodie" || style === "jacket") {
+    const c = new THREE.Color().setHSL(hue, style === "hoodie" ? 0.35 : 0.25, finish === "darkened" ? 0.22 : 0.4);
+    return new THREE.MeshStandardMaterial({ color: c, roughness: 0.88, metalness: 0.02 });
+  }
+  if (style === "vest") {
+    return new THREE.MeshStandardMaterial({
+      color: new THREE.Color().setHSL(0.1, 0.08, 0.18),
+      roughness: 0.75,
+      metalness: 0.2,
+    });
+  }
   if (style === "leather") {
     return makeLeatherMat(hue, finish === "darkened");
   }
@@ -713,7 +733,8 @@ export function buildWornBeltMesh(params: BeltParams): THREE.Group {
   return g;
 }
 
-function buildShieldMesh(params: ShieldParams): THREE.Group {
+function buildShieldMesh(paramsIn: ShieldParams): THREE.Group {
+  const params = { ...paramsIn, shape: shieldVisual(paramsIn.shape) };
   const g = new THREE.Group();
   const mat = params.material ?? "reinforced";
   const wood = makeWoodMat(params.metalHue, mat === "wood" ? 0.32 : 0.26);
@@ -765,8 +786,54 @@ function buildShieldMesh(params: ShieldParams): THREE.Group {
   return g;
 }
 
+type HelmLook = {
+  dome: "round" | "flat" | "tall" | "bucket" | "band" | "wrap";
+  peak?: boolean;
+  wide?: boolean;
+  nasal?: boolean;
+  face?: boolean;
+  visor?: boolean;
+  bars?: boolean;
+  tail?: boolean;
+  horns?: boolean;
+  crest?: boolean;
+  ears?: boolean;
+  slit?: boolean;
+  points?: boolean;
+  vents?: boolean;
+};
+
+const HELM_LOOK: Record<HelmetParams["style"], HelmLook> = {
+  cap: { dome: "round", peak: true },
+  beret: { dome: "flat" },
+  bandana: { dome: "wrap" },
+  beanie: { dome: "round" },
+  cowboy: { dome: "round", wide: true },
+  ushanka: { dome: "round", ears: true },
+  turban: { dome: "wrap" },
+  moto: { dome: "round", visor: true, face: true },
+  bike: { dome: "round", vents: true, peak: true },
+  racing: { dome: "tall", visor: true, face: true },
+  construction: { dome: "round", wide: true },
+  riot: { dome: "round", visor: true, bars: true },
+  pilot: { dome: "round", visor: true },
+  nasal: { dome: "round", nasal: true },
+  full: { dome: "round", face: true, nasal: true },
+  barbute: { dome: "round", face: true },
+  sallet: { dome: "round", tail: true },
+  great: { dome: "round", face: true, visor: true },
+  horned: { dome: "round", horns: true },
+  kettle: { dome: "round", wide: true },
+  morion: { dome: "round", wide: true, crest: true },
+  bascinet: { dome: "tall", visor: true },
+  coif: { dome: "wrap" },
+  crown: { dome: "band", points: true },
+  bucket: { dome: "bucket", slit: true },
+};
+
 function buildHelmetMesh(params: HelmetParams): THREE.Group {
   const g = new THREE.Group();
+  const look = HELM_LOOK[params.style];
   const material = params.material ?? "steel";
   const metal =
     material === "leather"
@@ -779,34 +846,70 @@ function buildHelmetMesh(params: HelmetParams): THREE.Group {
           })()
         : makeMetalMat(params.metalHue, params.rarity);
   const r = 0.14 + params.dome * 0.55;
-  const dome = new THREE.Mesh(
-    new THREE.SphereGeometry(r, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.62),
-    metal,
-  );
-  dome.position.y = r * 0.08;
-  g.add(dome);
-
-  if (params.style === "nasal" || params.style === "barbute" || params.style === "full") {
+  if (look.dome === "flat") {
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.15, r * 1.15, r * 0.22, 16), metal);
+    disc.position.y = r * 0.35;
+    g.add(disc);
+  } else if (look.dome === "band") {
+    const band = new THREE.Mesh(new THREE.TorusGeometry(r * 0.85, r * 0.16, 6, 16), metal);
+    band.rotation.x = Math.PI / 2;
+    band.position.y = r * 0.15;
+    g.add(band);
+  } else if (look.dome === "bucket") {
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.85, r * 0.95, r * 1.5, 12), metal);
+    body.position.y = -r * 0.15;
+    g.add(body);
+  } else if (look.dome === "wrap") {
+    const wrap = new THREE.Mesh(new THREE.SphereGeometry(r * 0.9, 12, 8), metal);
+    wrap.scale.set(1.15, 0.55, 1.05);
+    wrap.position.y = r * 0.15;
+    g.add(wrap);
+  } else {
+    const dome = new THREE.Mesh(
+      new THREE.SphereGeometry(r, 16, 12, 0, Math.PI * 2, 0, Math.PI * 0.62),
+      metal,
+    );
+    dome.scale.y = look.dome === "tall" ? 1.35 : 1;
+    dome.position.y = r * 0.08;
+    g.add(dome);
+  }
+  if (look.wide) {
+    const brim = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.7, r * 1.75, 0.02, 16), metal);
+    brim.position.y = look.dome === "flat" ? r * 0.2 : -r * 0.05;
+    g.add(brim);
+  } else if (look.peak) {
+    const peak = new THREE.Mesh(new THREE.BoxGeometry(r * 1.1, 0.02, r * 0.55), metal);
+    peak.position.set(0, r * 0.05, r * 0.85);
+    g.add(peak);
+  }
+  if (look.nasal) {
     const nasal = new THREE.Mesh(new THREE.BoxGeometry(0.035, r * 0.85, 0.045), metal);
     nasal.position.set(0, -r * 0.05, r * 0.82);
     g.add(nasal);
   }
-  if (params.style === "full" || params.style === "great" || params.style === "barbute") {
+  if (look.face) {
     const cheek = new THREE.Mesh(new THREE.BoxGeometry(r * 1.55, r * 0.65, 0.06), metal);
     cheek.position.set(0, -r * 0.15, r * 0.4);
     g.add(cheek);
   }
-  if (params.style === "sallet") {
+  if (look.visor) {
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(r * 1.5, r * 0.28, 0.05), metal);
+    visor.position.set(0, r * 0.08, r * 0.75);
+    g.add(visor);
+  }
+  if (look.bars) {
+    for (let i = 0; i < 3; i++) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.012, r * 0.7, 0.02), metal);
+      bar.position.set(-r * 0.25 + i * r * 0.25, -r * 0.1, r * 0.8);
+      g.add(bar);
+    }
+  }
+  if (look.tail) {
     const tail = new THREE.Mesh(new THREE.BoxGeometry(r * 1.1, r * 0.35, r * 0.7), metal);
     tail.position.set(0, -r * 0.05, -r * 0.35);
     g.add(tail);
   }
-  if (params.style === "great") {
-    const visor = new THREE.Mesh(new THREE.BoxGeometry(r * 1.5, r * 0.35, 0.08), metal);
-    visor.position.set(0, r * 0.05, r * 0.7);
-    g.add(visor);
-  }
-  if (params.style === "horned") {
+  if (look.horns) {
     for (const sx of [-1, 1]) {
       const horn = new THREE.Mesh(new THREE.ConeGeometry(0.04, r * 0.9, 6), metal);
       horn.position.set(sx * r * 0.7, r * 0.55, 0);
@@ -814,13 +917,43 @@ function buildHelmetMesh(params: HelmetParams): THREE.Group {
       g.add(horn);
     }
   }
-  if (params.brim > 0.03 && params.style !== "great") {
-    const brim = new THREE.Mesh(
-      new THREE.CylinderGeometry(r * 1.2, r * 1.28, Math.max(0.03, params.brim), 16),
-      metal,
+  if (look.crest) {
+    const crest = new THREE.Mesh(new THREE.BoxGeometry(0.03, r * 0.7, r * 0.9), metal);
+    crest.position.y = r * 0.55;
+    g.add(crest);
+  }
+  if (look.ears) {
+    for (const sx of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.BoxGeometry(r * 0.35, r * 0.7, 0.03), metal);
+      ear.position.set(sx * r * 0.95, -r * 0.05, 0);
+      g.add(ear);
+    }
+  }
+  if (look.slit) {
+    const slit = new THREE.Mesh(
+      new THREE.BoxGeometry(r * 0.7, 0.03, 0.04),
+      new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.8 }),
     );
-    brim.position.y = -r * 0.02;
-    g.add(brim);
+    slit.position.set(0, r * 0.05, r * 0.9);
+    g.add(slit);
+  }
+  if (look.points) {
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      const p = new THREE.Mesh(new THREE.ConeGeometry(0.03, r * 0.45, 5), metal);
+      p.position.set(Math.cos(a) * r * 0.85, r * 0.35, Math.sin(a) * r * 0.85);
+      g.add(p);
+    }
+  }
+  if (look.vents) {
+    for (const sx of [-1, 1]) {
+      const vent = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, 0.015, r * 0.35),
+        new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.7 }),
+      );
+      vent.position.set(sx * r * 0.35, r * 0.45, r * 0.35);
+      g.add(vent);
+    }
   }
   return g;
 }
@@ -911,44 +1044,45 @@ function buildThrowMesh(params: ThrowParams): THREE.Group {
 
 function buildBowMesh(params: BowParams): THREE.Group {
   const g = new THREE.Group();
-  const wood = makeWoodMat(params.metalHue, 0.3);
-  const woodDark = makeWoodMat(params.metalHue + 0.03, 0.22);
+  const wood = makeWoodMat(params.metalHue, 0.32);
+  const woodDark = makeWoodMat(params.metalHue + 0.03, 0.24);
   const wrap = makeLeatherMat(params.metalHue);
-  const stringMat = new THREE.MeshStandardMaterial({ color: 0xe8dcc0, roughness: 0.55, metalness: 0.05 });
-  const tipMat = makeMetalMat(params.metalHue, params.rarity, { polish: 0.85 });
-  const curve = 0.2 + params.limbCurve * 0.24;
-  const h = 0.62 + params.draw * 0.38;
+  const stringMat = new THREE.MeshStandardMaterial({ color: 0xf0e6d0, roughness: 0.5, metalness: 0.04 });
+  const tipMat = makeMetalMat(params.metalHue, params.rarity, { polish: 0.9 });
+  // Compacto y recurvo fino (escala de grip ~2.3)
+  const curve = 0.11 + params.limbCurve * 0.12;
+  const h = 0.38 + params.draw * 0.16;
 
-  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.034, 0.15, 8), wrap);
+  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.016, 0.08, 8), wrap);
   g.add(grip);
-  const riser = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 0.048), woodDark);
-  riser.position.x = 0.012;
+  const riser = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.1, 0.022), woodDark);
+  riser.position.x = 0.006;
   g.add(riser);
 
-  // Limbs como tubo continuo (recurvo)
   const pts: THREE.Vector3[] = [];
-  for (let i = 0; i <= 16; i++) {
-    const t = i / 16;
+  for (let i = 0; i <= 20; i++) {
+    const t = i / 20;
     const y = (t - 0.5) * h;
     const u = Math.abs(t - 0.5) * 2;
-    const x = curve * u * u * (0.35 + 0.65 * u);
+    // Recurvo: vientre + tip hacia atrás
+    const x = curve * (u * u * 1.15 - u * u * u * 0.55);
     pts.push(new THREE.Vector3(x, y, 0));
   }
   const path = new THREE.CatmullRomCurve3(pts);
-  const limbs = new THREE.Mesh(new THREE.TubeGeometry(path, 24, 0.016, 6, false), wood);
+  const limbs = new THREE.Mesh(new THREE.TubeGeometry(path, 28, 0.007, 5, false), wood);
   g.add(limbs);
 
-  const up = pts[pts.length - 1];
-  const dn = pts[0];
+  const up = pts[pts.length - 1]!;
+  const dn = pts[0]!;
   for (const p of [up, dn]) {
-    const nock = new THREE.Mesh(new THREE.SphereGeometry(0.016, 6, 6), tipMat);
+    const nock = new THREE.Mesh(new THREE.SphereGeometry(0.008, 5, 5), tipMat);
     nock.position.copy(p);
     g.add(nock);
   }
 
   const strH = Math.abs(up.y - dn.y);
-  const string = new THREE.Mesh(new THREE.CylinderGeometry(0.0045, 0.0045, strH, 4), stringMat);
-  string.position.set(-0.015, 0, 0);
+  const string = new THREE.Mesh(new THREE.CylinderGeometry(0.0022, 0.0022, strH, 4), stringMat);
+  string.position.set(-0.01, 0, 0);
   g.add(string);
 
   g.rotation.y = Math.PI / 2;
@@ -957,57 +1091,58 @@ function buildBowMesh(params: BowParams): THREE.Group {
 
 function buildCrossbowMesh(params: CrossbowParams): THREE.Group {
   const g = new THREE.Group();
-  const wood = makeWoodMat(params.metalHue, 0.28);
-  const woodDark = makeWoodMat(params.metalHue + 0.04, 0.2);
+  const wood = makeWoodMat(params.metalHue, 0.3);
+  const woodDark = makeWoodMat(params.metalHue + 0.04, 0.22);
   const metal = makeMetalMat(params.metalHue, params.rarity);
-  const stringMat = new THREE.MeshStandardMaterial({ color: 0xe8dcc0, roughness: 0.55 });
-  const stockLen = 0.42 + params.stockLength * 0.38;
+  const stringMat = new THREE.MeshStandardMaterial({ color: 0xf0e6d0, roughness: 0.5 });
+  // Compacta: culata corta, prod fino
+  const stockLen = 0.26 + params.stockLength * 0.14;
 
-  // Culata + caña
-  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.065, stockLen), wood);
+  const stock = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.032, stockLen), wood);
   stock.position.z = 0.02;
   g.add(stock);
-  const butt = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.12), woodDark);
-  butt.position.set(0, 0.02, -stockLen * 0.42);
+  const butt = new THREE.Mesh(new THREE.BoxGeometry(0.044, 0.055, 0.07), woodDark);
+  butt.position.set(0, 0.01, -stockLen * 0.42);
   g.add(butt);
-  const groove = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.02, stockLen * 0.7), woodDark);
-  groove.position.set(0, 0.04, 0.06);
+  const groove = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.01, stockLen * 0.65), woodDark);
+  groove.position.set(0, 0.02, 0.04);
   g.add(groove);
 
-  // Prod (arco) con limbs
-  const prodW = 0.5 + params.power * 0.28;
-  const prodZ = stockLen * 0.28;
-  for (const side of [-1, 1]) {
+  const prodW = 0.28 + params.power * 0.12;
+  const prodZ = stockLen * 0.32;
+  for (const side of [-1, 1] as const) {
+    const limbPts = [
+      new THREE.Vector3(0, 0.01, prodZ),
+      new THREE.Vector3(side * prodW * 0.28, 0.02, prodZ - 0.01),
+      new THREE.Vector3(side * prodW * 0.48, 0.035, prodZ - 0.03),
+    ];
     const limb = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.018, 0.014, prodW * 0.48, 6),
+      new THREE.TubeGeometry(new THREE.CatmullRomCurve3(limbPts), 10, 0.006, 5, false),
       wood,
     );
-    limb.rotation.z = side * (Math.PI / 2 - 0.25);
-    limb.position.set(side * prodW * 0.22, 0.02, prodZ);
     g.add(limb);
-    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.016, 6, 6), metal);
-    tip.position.set(side * prodW * 0.45, 0.05, prodZ - 0.02);
+    const tip = new THREE.Mesh(new THREE.SphereGeometry(0.008, 5, 5), metal);
+    tip.position.set(side * prodW * 0.48, 0.035, prodZ - 0.03);
     g.add(tip);
   }
-  const prodCenter = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.04, 0.05), metal);
-  prodCenter.position.set(0, 0.02, prodZ);
+  const prodCenter = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.022, 0.028), metal);
+  prodCenter.position.set(0, 0.012, prodZ);
   g.add(prodCenter);
 
-  const string = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.005, prodW * 0.85, 4), stringMat);
+  const string = new THREE.Mesh(new THREE.CylinderGeometry(0.0025, 0.0025, prodW * 0.9, 4), stringMat);
   string.rotation.z = Math.PI / 2;
-  string.position.set(0, 0.06, prodZ - 0.06);
+  string.position.set(0, 0.035, prodZ - 0.04);
   g.add(string);
 
-  // Estribo, tuerca y gatillo
-  const stirrup = new THREE.Mesh(new THREE.TorusGeometry(0.055, 0.012, 6, 12), metal);
-  stirrup.position.set(0, -0.02, stockLen * 0.42);
+  const stirrup = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.006, 5, 10), metal);
+  stirrup.position.set(0, -0.01, stockLen * 0.42);
   stirrup.rotation.x = Math.PI / 2;
   g.add(stirrup);
-  const nut = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.04, 0.045), metal);
-  nut.position.set(0, 0.045, 0.02);
+  const nut = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.02, 0.022), metal);
+  nut.position.set(0, 0.025, 0.01);
   g.add(nut);
-  const trigger = new THREE.Mesh(new THREE.BoxGeometry(0.02, 0.06, 0.015), metal);
-  trigger.position.set(0, -0.05, 0.0);
+  const trigger = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.032, 0.008), metal);
+  trigger.position.set(0, -0.028, 0);
   trigger.rotation.x = 0.35;
   g.add(trigger);
 
@@ -1062,7 +1197,8 @@ export function buildProjectileMesh(p: Projectile): THREE.Group {
 }
 
 /** Versión compacta para loot / icono 3D (mismas tipologías). */
-function buildArmorMesh(params: ArmorParams): THREE.Group {
+function buildArmorMesh(paramsIn: ArmorParams): THREE.Group {
+  const params = { ...paramsIn, style: armorVisual(paramsIn.style) };
   const g = new THREE.Group();
   const mat = makeArmorSurfaceMat(params);
   const h = 0.45 + params.bulk * 0.25;
@@ -1112,40 +1248,50 @@ function buildArmorMesh(params: ArmorParams): THREE.Group {
   return g;
 }
 
-function buildPantsMesh(params: PantsParams): THREE.Group {
+function buildPantsMesh(paramsIn: PantsParams): THREE.Group {
+  const params = { ...paramsIn, style: pantsVisual(paramsIn.style) };
   const g = new THREE.Group();
   const mat =
     params.style === "plated"
       ? makeMetalMat(params.hue, params.rarity, { polish: 0.9 })
       : new THREE.MeshStandardMaterial({
           color:
-            params.style === "cloth"
-              ? new THREE.Color().setHSL(0.6, 0.15, 0.35)
-              : leatherColor(params.hue),
+            params.style === "jeans"
+              ? new THREE.Color().setHSL(0.58, 0.4, 0.32)
+              : params.style === "cloth" || params.style === "jogger"
+                ? new THREE.Color().setHSL(params.hue, 0.25, 0.38)
+                : params.style === "cargo"
+                  ? new THREE.Color().setHSL(0.22, 0.35, 0.26)
+                  : leatherColor(params.hue),
           metalness: 0.05,
-          roughness: 0.8,
+          roughness: 0.85,
         });
+  const w = params.style === "jeans" ? 0.12 : 0.14;
   for (const x of [-0.1, 0.1]) {
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.35 + params.length * 0.25, 0.14), mat);
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(w, 0.35 + params.length * 0.25, w), mat);
     leg.position.set(x, -0.15, 0);
     g.add(leg);
   }
   return g;
 }
 
-function buildGlovesMesh(params: GlovesParams): THREE.Group {
+function gloveMat(params: GlovesParams): THREE.Material {
+  return params.style === "gauntlet"
+    ? makeMetalMat(params.hue, params.rarity)
+    : new THREE.MeshStandardMaterial({
+        color:
+          params.style === "cloth"
+            ? new THREE.Color().setHSL(0.1, 0.2, 0.4)
+            : leatherColor(params.hue),
+        metalness: 0.05,
+        roughness: 0.75,
+      });
+}
+
+function buildGlovesMesh(paramsIn: GlovesParams): THREE.Group {
+  const params = { ...paramsIn, style: gloveVisual(paramsIn.style) };
   const g = new THREE.Group();
-  const mat =
-    params.style === "gauntlet"
-      ? makeMetalMat(params.hue, params.rarity)
-      : new THREE.MeshStandardMaterial({
-          color:
-            params.style === "cloth"
-              ? new THREE.Color().setHSL(0.1, 0.2, 0.4)
-              : leatherColor(params.hue),
-          metalness: 0.05,
-          roughness: 0.75,
-        });
+  const mat = gloveMat(params);
   for (const x of [-0.12, 0.12]) {
     const hand = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.08, 0.14), mat);
     hand.position.set(x, 0, 0);
@@ -1154,7 +1300,35 @@ function buildGlovesMesh(params: GlovesParams): THREE.Group {
   return g;
 }
 
-function buildBeltMesh(params: BeltParams): THREE.Group {
+/** Un guante para MiddleHand: +Y hacia los dedos, −Y hacia la muñeca. */
+export function buildWornGloveMesh(params: GlovesParams): THREE.Group {
+  const g = new THREE.Group();
+  const mat = gloveMat(params);
+  const bulk = 0.95 + params.bulk * 0.2;
+  // Mitón: palma + dedos fusionados a lo largo de +Y
+  const palm = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.048 * bulk, 0.07 * bulk, 4, 8),
+    mat,
+  );
+  palm.position.set(0, 0.04, 0.012);
+  g.add(palm);
+  const thumb = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.02 * bulk, 0.03 * bulk, 3, 6),
+    mat,
+  );
+  thumb.position.set(0.045 * bulk, 0.02, 0.02);
+  thumb.rotation.z = -0.7;
+  g.add(thumb);
+  if (params.style === "gauntlet") {
+    const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.055 * bulk, 0.06 * bulk, 0.07 * bulk, 8), mat);
+    cuff.position.set(0, -0.05, 0.01);
+    g.add(cuff);
+  }
+  return g;
+}
+
+function buildBeltMesh(paramsIn: BeltParams): THREE.Group {
+  const params = { ...paramsIn, style: beltVisual(paramsIn.style) };
   const g = new THREE.Group();
   const mat =
     params.style === "plated"
@@ -1170,6 +1344,52 @@ function buildBeltMesh(params: BeltParams): THREE.Group {
   const belt = new THREE.Mesh(new THREE.TorusGeometry(0.18, params.width * 0.35, 6, 16), mat);
   belt.rotation.x = Math.PI / 2;
   g.add(belt);
+  return g;
+}
+
+function buildRingMesh(params: RingParams): THREE.Group {
+  const g = new THREE.Group();
+  const metal = makeMetalMat(params.metalHue, params.rarity, { polish: 1.1 });
+  const band = new THREE.Mesh(new THREE.TorusGeometry(0.08, params.style === "braided" ? 0.02 : 0.014, 6, 16), metal);
+  g.add(band);
+  if (params.style === "signet" || params.style === "skull" || params.gem !== "none") {
+    const gemCol =
+      params.gem === "ruby"
+        ? 0x9a1c1c
+        : params.gem === "sapphire"
+          ? 0x1c3a9a
+          : params.gem === "emerald"
+            ? 0x1c7a3a
+            : params.gem === "diamond"
+              ? 0xe8f4ff
+              : 0xc8c8c8;
+    const top = new THREE.Mesh(
+      params.style === "skull"
+        ? new THREE.SphereGeometry(0.035, 6, 5)
+        : new THREE.BoxGeometry(0.04, 0.04, 0.04),
+      new THREE.MeshStandardMaterial({ color: gemCol, roughness: 0.25, metalness: 0.2 }),
+    );
+    top.position.y = 0.06;
+    g.add(top);
+  }
+  return g;
+}
+
+function buildAmuletMesh(params: AmuletParams): THREE.Group {
+  const g = new THREE.Group();
+  const metal = makeMetalMat(params.metalHue, params.rarity, { polish: 1 });
+  const chain = new THREE.Mesh(new THREE.TorusGeometry(0.09, 0.008, 4, 16), metal);
+  g.add(chain);
+  const pendant =
+    params.style === "tooth"
+      ? new THREE.ConeGeometry(0.03, 0.1, 5)
+      : params.style === "medallion"
+        ? new THREE.CylinderGeometry(0.045, 0.045, 0.015, 12)
+        : new THREE.SphereGeometry(0.04, 8, 6);
+  const drop = new THREE.Mesh(pendant, metal);
+  drop.position.y = -0.1;
+  if (params.style === "medallion") drop.rotation.x = Math.PI / 2;
+  g.add(drop);
   return g;
 }
 
@@ -1190,10 +1410,10 @@ export function buildItemMesh(
     m.scale.setScalar(0.85);
   } else if (item.kind === "bow") {
     m = buildBowMesh(item.params as BowParams);
-    m.scale.setScalar(1.05);
+    m.scale.setScalar(1);
   } else if (item.kind === "crossbow") {
     m = buildCrossbowMesh(item.params as CrossbowParams);
-    m.scale.setScalar(0.95);
+    m.scale.setScalar(1);
   } else if (item.kind === "boots") {
     m = buildBootsMesh(item.params as BootsParams);
     m.scale.setScalar(1.1);
@@ -1212,6 +1432,10 @@ export function buildItemMesh(
   } else if (item.kind === "gloves") {
     m = buildGlovesMesh(item.params as GlovesParams);
     m.scale.setScalar(1);
+  } else if (item.kind === "ring") {
+    m = buildRingMesh(item.params as RingParams);
+  } else if (item.kind === "amulet") {
+    m = buildAmuletMesh(item.params as AmuletParams);
   } else {
     m = buildBeltMesh(item.params as BeltParams);
     m.scale.setScalar(1.1);
@@ -1223,6 +1447,9 @@ export function buildItemMesh(
 }
 
 export function disposeObject3D(root: THREE.Object3D): void {
+  const onDispose = (root as THREE.Object3D & { userData: { onDispose?: () => void } }).userData
+    ?.onDispose;
+  if (typeof onDispose === "function") onDispose();
   root.traverse((obj) => {
     if (obj instanceof THREE.Mesh) {
       obj.geometry.dispose();

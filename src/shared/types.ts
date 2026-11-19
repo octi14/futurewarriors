@@ -58,8 +58,28 @@ export type CrossbowParams = {
 
 export type BootsParams = {
   seed: number;
-  /** light=botas cuero, trail=botas altas, greaves=grebas metal, plate=botas + placa. */
-  style: "light" | "trail" | "greaves" | "plate";
+  /**
+   * canvas=lona baja, sport=zapatilla deportiva, military=zapato/bota militar,
+   * combat=borcegos, trail=caña alta trekking, greaves/plate=metal.
+   */
+  style:
+    | "canvas"
+    | "sport"
+    | "military"
+    | "combat"
+    | "trail"
+    | "greaves"
+    | "plate"
+    | "sneaker"
+    | "sandal"
+    | "loafer"
+    | "oxford"
+    | "riding"
+    | "dress"
+    | "work"
+    | "ski";
+  /** Tono del metal (plate/greaves); none en tela/cuero. */
+  metalTone: "none" | "steel" | "gold" | "copper";
   height: number;
   sole: number;
   leatherHue: number;
@@ -68,7 +88,7 @@ export type BootsParams = {
 
 export type ShieldParams = {
   seed: number;
-  shape: "round" | "heater" | "kite";
+  shape: "round" | "heater" | "kite" | "buckler" | "targe" | "tower" | "pavise";
   /** Madera, madera con herrajes, o metal macizo. */
   material: "wood" | "reinforced" | "metal";
   width: number;
@@ -80,7 +100,32 @@ export type ShieldParams = {
 
 export type HelmetParams = {
   seed: number;
-  style: "cap" | "nasal" | "full" | "barbute" | "sallet" | "great" | "horned";
+  style:
+    | "cap"
+    | "beret"
+    | "bandana"
+    | "beanie"
+    | "cowboy"
+    | "ushanka"
+    | "turban"
+    | "moto"
+    | "bike"
+    | "racing"
+    | "construction"
+    | "riot"
+    | "pilot"
+    | "nasal"
+    | "full"
+    | "barbute"
+    | "sallet"
+    | "great"
+    | "horned"
+    | "kettle"
+    | "morion"
+    | "bascinet"
+    | "coif"
+    | "crown"
+    | "bucket";
   /** Cuero endurecido, bronce/latón, o acero. */
   material: "leather" | "bronze" | "steel";
   dome: number;
@@ -91,8 +136,33 @@ export type HelmetParams = {
 
 export type ArmorParams = {
   seed: number;
-  /** Tipo constructivo de la armadura. */
-  style: "leather" | "padded" | "chain" | "scale" | "plate";
+  /**
+   * Ropa común + armaduras:
+   * hoodie=buzo, jacket=campera, vest=chaleco (antibalas/táctico),
+   * leather/padded/chain/scale/plate = protección clásica.
+   */
+  style:
+    | "hoodie"
+    | "jacket"
+    | "vest"
+    | "leather"
+    | "padded"
+    | "chain"
+    | "scale"
+    | "plate"
+    | "shirt"
+    | "tunic"
+    | "coat"
+    | "duster"
+    | "poncho"
+    | "tabard"
+    | "brigandine"
+    | "gambeson"
+    | "hauberk"
+    | "lamellar"
+    | "cuirass";
+  /** Manga: none=chaleco, short, long. */
+  sleeves: "none" | "short" | "long";
   /**
    * Acabado (sobre todo metal):
    * bare = acero/hierro sin pintar, painted = lacado de color, polished = pulido,
@@ -102,19 +172,62 @@ export type ArmorParams = {
   bulk: number;
   hue: number;
   rarity: Rarity;
+  /** Segundo tono (0..1). Sin esto = un color. */
+  accentHue?: number;
+  /** Capucha (buzo/campera). */
+  hood?: boolean;
+  /** Cierre frontal visible. */
+  zipper?: "none" | "half" | "full";
+  /** Bolsillos 0..4 (canguro cuenta como 1 en buzo). */
+  pockets?: number;
+  /** Franjas decorativas. */
+  stripe?: "none" | "chest" | "sleeve" | "side" | "hem";
+  stripeHue?: number;
+  /** 0=sin logo; 1..64 glifo procedural inventado. */
+  logo?: number;
+  /** Panel pecho en accentHue (colorblock). */
+  colorBlock?: boolean;
+  /** Puños / pretina acanalada. */
+  cuffs?: boolean;
+  /** Cordones de capucha / drawstring. */
+  cords?: boolean;
 };
 
 export type PantsParams = {
   seed: number;
-  style: "cloth" | "leather" | "plated";
+  /**
+   * cloth=tela, jeans=denim, jogger=suelto con puño, cargo=militar,
+   * leather=cuero, plated=placas/rodilleras.
+   */
+  style:
+    | "cloth"
+    | "jeans"
+    | "jogger"
+    | "cargo"
+    | "leather"
+    | "plated"
+    | "shorts"
+    | "chaps"
+    | "kilt"
+    | "breeches"
+    | "fatigues";
   length: number;
   hue: number;
   rarity: Rarity;
-};
+  /** Grosor/anchura del shell (preview slider). Default 1. */
+  shellScale?: number;
+  /** Altura de cintura 0=baja … 1=alta (preview slider). Default 0.4. */
+  waistRise?: number;
+  /**
+   * Bolsillos visibles 0..6 (pares L/R cuando aplica).
+   * 2=delanteros, 4=+traseros, 5=+monedero, 6=+cargo muslo.
+   */
+  pockets?: number;
+}
 
 export type GlovesParams = {
   seed: number;
-  style: "cloth" | "leather" | "gauntlet";
+  style: "cloth" | "leather" | "gauntlet" | "wraps" | "mittens" | "bracers";
   bulk: number;
   hue: number;
   rarity: Rarity;
@@ -122,13 +235,28 @@ export type GlovesParams = {
 
 export type BeltParams = {
   seed: number;
-  style: "rope" | "leather" | "plated";
+  style: "rope" | "leather" | "plated" | "sash" | "chainbelt" | "utility";
   width: number;
   hue: number;
   rarity: Rarity;
 };
 
 /** Stats unificados: armas llenan combate; gear llena bonuses. */
+export type RingParams = {
+  seed: number;
+  style: "band" | "signet" | "gem" | "skull" | "braided";
+  gem: "none" | "ruby" | "sapphire" | "emerald" | "diamond";
+  metalHue: number;
+  rarity: Rarity;
+};
+
+export type AmuletParams = {
+  seed: number;
+  style: "pendant" | "relic" | "tooth" | "medallion" | "charm";
+  metalHue: number;
+  rarity: Rarity;
+};
+
 export type ItemStats = {
   damage: number;
   reach: number;
@@ -166,7 +294,9 @@ export type ItemKind =
   | "armor"
   | "pants"
   | "gloves"
-  | "belt";
+  | "belt"
+  | "ring"
+  | "amulet";
 
 export type ItemParams =
   | SwordParams
@@ -180,7 +310,9 @@ export type ItemParams =
   | ArmorParams
   | PantsParams
   | GlovesParams
-  | BeltParams;
+  | BeltParams
+  | RingParams
+  | AmuletParams;
 
 export type ItemInstance = {
   id: string;
@@ -213,6 +345,10 @@ export type CoreStats = {
 export type Actor = {
   id: EntityId;
   kind: "player" | "ai";
+  /** Cazador (como el jugador) o bicho. */
+  role?: "hunter" | "bug";
+  /** Segundos hasta elegir otra dirección de paseo. */
+  wander?: number;
   pos: Vec2;
   hp: number;
   maxHp: number;
@@ -233,6 +369,10 @@ export type Actor = {
   lastMoveX: number;
   lastMoveY: number;
   walkPhase: number;
+  /** Altura vertical (salto). */
+  height: number;
+  velY: number;
+  crouching: boolean;
 };
 
 export type DamagePopup = {
@@ -252,6 +392,8 @@ export type LootDrop = {
   item: ItemInstance;
   ttl: number;
   source: LootSource;
+  /** Segundos desde que spawneó (para caída al suelo). */
+  age: number;
 };
 
 export type CoinDrop = {
@@ -259,6 +401,7 @@ export type CoinDrop = {
   pos: Vec2;
   amount: number;
   ttl: number;
+  age: number;
 };
 
 export type ProjectileVisual = "weapon" | "arrow" | "bolt";
@@ -298,5 +441,8 @@ export type CombatAnimKind =
 
 export type WorldConfig = {
   mapSize: number;
+  /** Cazadores vivos a la vez. */
   aiCount: number;
+  /** Bichos vivos a la vez. */
+  bugCount: number;
 };

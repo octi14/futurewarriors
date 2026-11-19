@@ -53,7 +53,7 @@ const COIN_DROP_MAX = 3;
 const STAT_COST_BASE = 12;
 const STAT_COST_GROWTH = 1.55;
 /** Duración visual/lógica del swing (s). */
-export const SLASH_DURATION = 0.34;
+export const SLASH_DURATION = 0.52;
 /** Cuántas variantes de animación de espadazo ciclan. */
 export const SLASH_VARIANT_COUNT = 3;
 const AI_STUN_ON_HIT = 0.55;
@@ -62,7 +62,7 @@ export const AI_DEATH_ANIM = 0.9;
 /** Tiempo total de cadáver antes de desaparecer (incluye anim). */
 export const AI_CORPSE_TIME = 3.2;
 const AI_KNOCKBACK = 1.35;
-const AI_RESPAWN_INTERVAL = 28;
+const AI_RESPAWN_INTERVAL = 5;
 
 /** Metros de juego por paso (una pierna). Un ciclo completo ≈ 2 zancadas. */
 export const STRIDE_LENGTH = 0.72;
@@ -167,18 +167,20 @@ function moveSpeedFromCore(core: CoreStats, moveMult = 1): number {
   return core.speed * MOVE_SPEED_PER_STAT * moveMult;
 }
 
-function makeAi(pos: Vec2, tier = 0): Actor {
+function makeAi(pos: Vec2, tier = 0, role: "hunter" | "bug" = "bug"): Actor {
+  const bug = role === "bug";
   const core: CoreStats = {
-    strength: 6 + tier,
-    speed: 6 + (tier % 3),
-    defense: 2 + Math.floor(tier / 2),
+    strength: bug ? 3 + tier : 8 + tier,
+    speed: bug ? 5 + (tier % 2) : 7 + (tier % 3),
+    defense: bug ? 1 : 3 + Math.floor(tier / 2),
   };
   return {
     id: nextId("ai"),
     kind: "ai",
+    role,
     pos: { x: pos.x, y: pos.y },
-    hp: 40 + tier * 5,
-    maxHp: 40 + tier * 5,
+    hp: bug ? 28 + tier * 4 : 70 + tier * 8,
+    maxHp: bug ? 28 + tier * 4 : 70 + tier * 8,
     energy: 0,
     maxEnergy: 0,
     core,
@@ -192,13 +194,17 @@ function makeAi(pos: Vec2, tier = 0): Actor {
     deathTimer: 0,
     moving: false,
     running: false,
-    lastMoveX: 0,
-    lastMoveY: 1,
+    lastMoveX: Math.cos(Math.random() * Math.PI * 2),
+    lastMoveY: Math.sin(Math.random() * Math.PI * 2),
     walkPhase: 0,
+    wander: 1 + Math.random() * 2,
+    height: 0,
+    velY: 0,
+    crouching: false,
   };
 }
 
-export function createWorld(config: WorldConfig = { mapSize: 40, aiCount: 6 }): WorldState {
+export function createWorld(config: WorldConfig = { mapSize: 180, aiCount: 8, bugCount: 22 }): WorldState {
   const starter = createSwordItem(42);
   const bag: BagPlacement[] = [];
 
@@ -225,14 +231,27 @@ export function createWorld(config: WorldConfig = { mapSize: 40, aiCount: 6 }): 
     lastMoveX: 0,
     lastMoveY: 1,
     walkPhase: 0,
+    height: 0,
+    velY: 0,
+    crouching: false,
   };
 
   const ais: Actor[] = [];
-  for (let i = 0; i < config.aiCount; i++) {
-    const angle = (i / config.aiCount) * Math.PI * 2;
-    const radius = 8 + (i % 3) * 3;
-    ais.push(makeAi(vec(Math.cos(angle) * radius, Math.sin(angle) * radius), i));
-  }
+  const scatter = (n: number, role: "hunter" | "bug") => {
+    const half = config.mapSize * 0.42;
+    for (let i = 0; i < n; i++) {
+      let x = 0;
+      let y = 0;
+      for (let k = 0; k < 6; k++) {
+        x = (Math.random() * 2 - 1) * half;
+        y = (Math.random() * 2 - 1) * half;
+        if (Math.hypot(x, y) > 8) break;
+      }
+      ais.push(makeAi(vec(x, y), i % 5, role));
+    }
+  };
+  scatter(config.aiCount, "hunter");
+  scatter(config.bugCount, "bug");
 
   const equipment = emptyEquipment();
   equipment.weapon = starter;
@@ -425,7 +444,8 @@ export function equipFromBag(world: WorldState, itemId: string): void {
     return;
   }
 
-  const slot = item.equipSlot;
+  const slot =
+    item.kind === "ring" && world.equipment.ring1 && !world.equipment.ring2 ? "ring2" : item.equipSlot;
   const previous = world.equipment[slot];
   if (previous && !tryAddItem(world, previous)) {
     abort("Sin espacio para el ítem desequipado");
@@ -471,6 +491,7 @@ function dropItemAtPlayer(world: WorldState, item: ItemInstance): void {
     item,
     ttl: LOOT_TTL_PLAYER,
     source: "player",
+    age: 0,
   });
 }
 
@@ -528,11 +549,7 @@ function pickCombatAnim(world: WorldState, weapon: ItemInstance | null): CombatA
   if (weapon?.kind === "crossbow") return "crossbow";
   if (weapon?.kind === "throw") return "throw";
   if (isTwoHanded(weapon)) return "twohand";
-  if (getOffhandWeapon(world)) {
-    const hand = world.dualHandNext;
-    world.dualHandNext = hand === 0 ? 1 : 0;
-    return hand === 0 ? "dualR" : "dualL";
-  }
+  if (getOffhandWeapon(world)) return "dualR";
   return "slash";
 }
 
@@ -636,7 +653,7 @@ function updateProjectiles(world: WorldState, dt: number): void {
     p.spin += p.spinRate * dt;
     let hit = false;
     for (const ai of world.ais) {
-      if (!ai.alive) continue;
+      if (!ai.alive || ai.role === "hunter") continue;
       if (dist(p.pos, ai.pos) > p.radius + 0.55) continue;
       dealDamage(world, ai, p.damage);
       const klen = Math.hypot(p.dirX, p.dirY) || 1;
@@ -703,6 +720,7 @@ function spawnLoot(world: WorldState, pos: Vec2): void {
     item,
     ttl: LOOT_TTL_CORPSE,
     source: "corpse",
+    age: 0,
   });
   maybeSpawnCoins(world, pos);
 }
@@ -716,6 +734,7 @@ function maybeSpawnCoins(world: WorldState, pos: Vec2): void {
     pos: { x: pos.x + (Math.random() - 0.5) * 0.5, y: pos.y + (Math.random() - 0.5) * 0.5 },
     amount,
     ttl: COIN_TTL,
+    age: 0,
   });
 }
 
@@ -861,8 +880,9 @@ function resolveSlashHit(world: WorldState): void {
   world.slashHitApplied = true;
   const player = world.player;
   const weapon = getEquipped(world);
-  const stats = getCombatWeaponStats(world);
-  const dual = !!getOffhandWeapon(world);
+  const offWeapon = getOffhandWeapon(world);
+  const stats = weapon?.stats ?? getCombatWeaponStats(world);
+  const dual = !!offWeapon;
   const kind = world.chargeAttack ? world.chargeKind : "none";
   const reachBonus =
     kind === "thrust"
@@ -917,11 +937,12 @@ function resolveSlashHit(world: WorldState): void {
   let nearestD = Infinity;
 
   for (const ai of world.ais) {
-    if (!ai.alive) continue;
+    if (!ai.alive || ai.role === "hunter") continue;
     const d = dist(player.pos, ai.pos);
     if (d < nearestD) nearestD = d;
     if (d > reach) continue;
     dealDamage(world, ai, outgoingDamage(player, stats.damage) * dmgMult);
+    if (offWeapon) dealDamage(world, ai, outgoingDamage(player, offWeapon.stats.damage) * dmgMult);
     let kdx = ai.pos.x - player.pos.x;
     let kdy = ai.pos.y - player.pos.y;
     if (kind === "arc") {
@@ -951,31 +972,20 @@ function resolveSlashHit(world: WorldState): void {
   else if (kind === "slam") setToast(world, "Mazazo!");
   else if (kind === "throw" || kind === "shot") setToast(world, "Tiro especial!");
   else if (kind === "punch") setToast(world, "Embestida!");
-  else if (dual) {
-    setToast(world, world.combatAnim === "dualL" ? "Golpe izquierdo!" : "Golpe derecho!");
-  }
+  else if (dual) setToast(world, "Doble golpe!");
 }
 
-function spawnAiNearEdge(world: WorldState): void {
+function spawnRole(world: WorldState, role: "hunter" | "bug"): void {
   const half = world.config.mapSize * 0.45;
-  const side = Math.floor(Math.random() * 4);
   let x = 0;
   let y = 0;
-  if (side === 0) {
-    x = -half;
-    y = (Math.random() * 2 - 1) * half;
-  } else if (side === 1) {
-    x = half;
-    y = (Math.random() * 2 - 1) * half;
-  } else if (side === 2) {
+  for (let n = 0; n < 8; n++) {
     x = (Math.random() * 2 - 1) * half;
-    y = -half;
-  } else {
-    x = (Math.random() * 2 - 1) * half;
-    y = half;
+    y = (Math.random() * 2 - 1) * half;
+    if (dist({ x, y }, world.player.pos) > 12) break;
   }
-  const tier = Math.floor(Math.random() * 5);
-  world.ais.push(makeAi(vec(x, y), tier));
+  const tier = role === "bug" ? Math.floor(Math.random() * 3) : 2 + Math.floor(Math.random() * 4);
+  world.ais.push(makeAi(vec(x, y), tier, role));
 }
 
 function updateAi(world: WorldState, dt: number): void {
@@ -989,14 +999,13 @@ function updateAi(world: WorldState, dt: number): void {
     world.ais = world.ais.filter((a) => a.alive || a.deathTimer > 0);
   }
 
-  // Respawn periódico si faltan IA vivas respecto al cupo
   world.aiSpawnTimer -= dt;
   if (world.aiSpawnTimer <= 0) {
     world.aiSpawnTimer = AI_RESPAWN_INTERVAL * (0.7 + Math.random() * 0.6);
-    const alive = world.ais.filter((a) => a.alive).length;
-    if (alive < world.config.aiCount) {
-      spawnAiNearEdge(world);
-    }
+    const hunters = world.ais.filter((a) => a.alive && a.role === "hunter").length;
+    const bugs = world.ais.filter((a) => a.alive && a.role !== "hunter").length;
+    if (hunters < world.config.aiCount) spawnRole(world, "hunter");
+    if (bugs < world.config.bugCount) spawnRole(world, "bug");
   }
 
   for (const ai of world.ais) {
@@ -1005,38 +1014,64 @@ function updateAi(world: WorldState, dt: number): void {
     ai.attackSwing = Math.max(0, ai.attackSwing - dt);
     ai.hurtTimer = Math.max(0, ai.hurtTimer - dt);
     ai.stunTimer = Math.max(0, ai.stunTimer - dt);
-
-    if (!player.alive) {
-      ai.moving = false;
-      continue;
-    }
-
-    // Aturdido: no ataca ni persigue (queda en el sitio tras el knockback)
     if (ai.stunTimer > 0) {
       ai.moving = false;
       continue;
     }
 
-    const d = dist(ai.pos, player.pos);
-    const dx = player.pos.x - ai.pos.x;
-    const dy = player.pos.y - ai.pos.y;
-    ai.facing = Math.atan2(dx, dy) + Math.PI;
+    const hunter = ai.role === "hunter";
+    let tx = 0;
+    let ty = 0;
+    let prey: Actor | null = null;
+    let best = hunter ? 16 : 7;
+    if (!hunter && player.alive) {
+      const dp = dist(ai.pos, player.pos);
+      if (dp < best) {
+        best = dp;
+        prey = player;
+      }
+    }
+    for (const other of world.ais) {
+      if (!other.alive || other === ai) continue;
+      if (hunter ? other.role !== "bug" : other.role !== "hunter") continue;
+      const d = dist(ai.pos, other.pos);
+      if (d < best) {
+        best = d;
+        prey = other;
+      }
+    }
 
-    if (d > 1.1) {
-      const len = Math.hypot(dx, dy) || 1;
-      const step = ai.speed * dt;
-      ai.pos.x += (dx / len) * step;
-      ai.pos.y += (dy / len) * step;
+    if (prey) {
+      tx = prey.pos.x - ai.pos.x;
+      ty = prey.pos.y - ai.pos.y;
+    } else {
+      ai.wander = (ai.wander ?? 0) - dt;
+      if (ai.wander <= 0) {
+        const a = Math.random() * Math.PI * 2;
+        ai.lastMoveX = Math.cos(a);
+        ai.lastMoveY = Math.sin(a);
+        ai.wander = 2 + Math.random() * 3;
+      }
+      tx = ai.lastMoveX;
+      ty = ai.lastMoveY;
+    }
+
+    const d = Math.hypot(tx, ty) || 1;
+    ai.facing = Math.atan2(tx, ty) + Math.PI;
+    if (!prey || d > 1.1) {
+      const step = ai.speed * dt * (prey ? 1 : 0.55);
+      ai.pos.x += (tx / d) * step;
+      ai.pos.y += (ty / d) * step;
       ai.walkPhase += (step / STRIDE_LENGTH) * Math.PI;
       ai.moving = true;
       clampToMap(ai.pos, world.config.mapSize);
     } else {
       ai.moving = false;
       if (ai.attackCooldown <= 0) {
-        dealDamage(world, player, outgoingDamage(ai, 8), true);
-        ai.attackCooldown = 0.9;
+        dealDamage(world, prey, outgoingDamage(ai, hunter ? 12 : 7), prey.kind === "player");
+        ai.attackCooldown = hunter ? 0.85 : 1.05;
         ai.attackSwing = 0.28;
-        if (!player.alive) setToast(world, "Moriste — recargá la página");
+        if (prey.kind === "player" && !prey.alive) setToast(world, "Moriste — recargá la página");
       }
     }
   }
@@ -1053,6 +1088,10 @@ export type InputState = {
   aimMoved: boolean;
   /** Shift: sprint */
   sprint: boolean;
+  /** Espacio: impulso de salto (edge) */
+  jump: boolean;
+  /** Ctrl: agachar */
+  crouch: boolean;
 };
 
 export function stepWorld(world: WorldState, dt: number, input: InputState): void {
@@ -1066,7 +1105,7 @@ export function stepWorld(world: WorldState, dt: number, input: InputState): voi
   player.attackCooldown = Math.max(0, player.attackCooldown - dt);
   player.attackSwing = Math.max(0, player.attackSwing - dt);
   player.hurtTimer = Math.max(0, player.hurtTimer - dt);
-  if (player.attackSwing > 0 && player.attackSwing <= SLASH_DURATION * 0.55) {
+  if (player.attackSwing > 0 && player.attackSwing <= Math.max(0.05, world.attackSwingMax) * 0.55) {
     resolveSlashHit(world);
   }
   // Soltar proyectil a ~40% del swing (tiro / arco / ballesta)
@@ -1088,19 +1127,33 @@ export function stepWorld(world: WorldState, dt: number, input: InputState): voi
   world.damagePopups = world.damagePopups.filter((p) => p.life > 0);
 
   if (player.alive) {
+    const grounded = player.height <= 0.001;
+    player.crouching = input.crouch && grounded;
+    if (input.jump && grounded && !player.crouching) {
+      player.velY = 7.2;
+      player.height = 0.001;
+    }
+    player.velY -= 22 * dt;
+    player.height += player.velY * dt;
+    if (player.height <= 0) {
+      player.height = 0;
+      player.velY = 0;
+    }
+
     const len = Math.hypot(input.moveX, input.moveY);
     player.moving = len > 0 && player.alive;
-    player.running = player.moving && input.sprint && player.energy > 1;
+    player.running =
+      player.moving && input.sprint && player.energy > 1 && !player.crouching && grounded;
 
-    if (input.hasAim && input.aimMoved) {
+    // Mirar al mouse solo parado; con WASD, hacia donde camina
+    if (player.moving) {
+      player.facing = Math.atan2(input.moveX / len, input.moveY / len) + Math.PI;
+    } else if (input.hasAim && input.aimMoved) {
       const adx = input.aimX - player.pos.x;
       const ady = input.aimY - player.pos.y;
       if (Math.hypot(adx, ady) > 0.05) {
         player.facing = Math.atan2(adx, ady) + Math.PI;
       }
-    } else if (player.moving) {
-      // Sin movimiento de mouse: mirar hacia donde camina
-      player.facing = Math.atan2(input.moveX / len, input.moveY / len) + Math.PI;
     }
 
     if (player.moving) {
@@ -1109,7 +1162,8 @@ export function stepWorld(world: WorldState, dt: number, input: InputState): voi
       player.lastMoveX = nx;
       player.lastMoveY = ny;
       const sprintMult = player.running ? 1.65 : 1;
-      const step = player.speed * sprintMult * dt;
+      const crouchMult = player.crouching ? 0.5 : 1;
+      const step = player.speed * sprintMult * crouchMult * dt;
       player.pos.x += nx * step;
       player.pos.y += ny * step;
       player.walkPhase += (step / STRIDE_LENGTH) * Math.PI;
@@ -1137,9 +1191,15 @@ export function stepWorld(world: WorldState, dt: number, input: InputState): voi
 
   updateAi(world, dt);
 
-  // Despawn loot / monedas por TTL
-  for (const drop of world.loot) drop.ttl -= dt;
-  for (const c of world.coinDrops) c.ttl -= dt;
+  // Despawn loot / monedas por TTL + edad de caída
+  for (const drop of world.loot) {
+    drop.ttl -= dt;
+    drop.age += dt;
+  }
+  for (const c of world.coinDrops) {
+    c.ttl -= dt;
+    c.age += dt;
+  }
   if (world.loot.some((d) => d.ttl <= 0)) {
     world.loot = world.loot.filter((d) => d.ttl > 0);
   }

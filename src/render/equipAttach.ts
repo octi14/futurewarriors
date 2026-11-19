@@ -4,16 +4,22 @@ import type {
   BeltParams,
   BootsParams,
   Equipment,
+  GlovesParams,
   ItemInstance,
+  PantsParams,
 } from "../shared/types";
 import type { HeroHandle } from "./loadHero";
 import {
   buildItemMesh,
-  buildWornArmorMesh,
   buildWornBeltMesh,
-  buildWornBootMesh,
   disposeObject3D,
 } from "./itemMesh";
+import {
+  buildSkinnedArmor,
+  buildSkinnedBoots,
+  buildSkinnedGloves,
+  buildSkinnedPants,
+} from "./skinnedGear";
 
 export type EquipMeshes = {
   weapon: THREE.Group;
@@ -21,8 +27,11 @@ export type EquipMeshes = {
   helmet: THREE.Group;
   armor: THREE.Group;
   belt: THREE.Group;
+  pants: THREE.Group;
   bootL: THREE.Group;
   bootR: THREE.Group;
+  gloveL: THREE.Group;
+  gloveR: THREE.Group;
 };
 
 export function emptyEquipMeshes(): EquipMeshes {
@@ -32,8 +41,11 @@ export function emptyEquipMeshes(): EquipMeshes {
     helmet: new THREE.Group(),
     armor: new THREE.Group(),
     belt: new THREE.Group(),
+    pants: new THREE.Group(),
     bootL: new THREE.Group(),
     bootR: new THREE.Group(),
+    gloveL: new THREE.Group(),
+    gloveR: new THREE.Group(),
   };
 }
 
@@ -41,10 +53,14 @@ export function mountEquipMeshes(hero: HeroHandle, m: EquipMeshes): void {
   hero.handGrip.add(m.weapon);
   hero.offhandGrip.add(m.offhand);
   hero.headGrip.add(m.helmet);
-  hero.torsoGrip.add(m.armor);
   hero.beltGrip.add(m.belt);
-  hero.bootGripL.add(m.bootL);
-  hero.bootGripR.add(m.bootR);
+  // Armadura / pantalón / botas / guantes: capa skinned
+  hero.skinnedLayer.add(m.armor);
+  hero.skinnedLayer.add(m.pants);
+  hero.skinnedLayer.add(m.bootL);
+  hero.skinnedLayer.add(m.bootR);
+  hero.skinnedLayer.add(m.gloveL);
+  hero.skinnedLayer.add(m.gloveR);
 }
 
 function replaceGripChild(
@@ -58,6 +74,47 @@ function replaceGripChild(
   return next;
 }
 
+type WeaponOffsetKey =
+  | "sword"
+  | "dagger"
+  | "axe"
+  | "smallAxe"
+  | "bow"
+  | "crossbow"
+  | "throw";
+
+/** Offset local por tipo de arma. */
+const weaponOffsets: Record<WeaponOffsetKey, { x: number; y: number; z: number }> = {
+  sword: { x: -0.4, y: 0.4, z: -0.115 },
+  dagger: { x: -0.4, y: 0.4, z: -0.115 },
+  axe: { x: 0.16, y: 0.36, z: -0.1 },
+  smallAxe: { x: -0.12, y: 0.36, z: -0.15 },
+  bow: { x: -0.26, y: 0.45, z: -0.01 },
+  crossbow: { x: -0.4, y: 0.4, z: -0.115 },
+  throw: { x: -0.4, y: 0.4, z: -0.1 },
+};
+
+function weaponOffsetKey(w: ItemInstance): WeaponOffsetKey {
+  if (w.kind === "axe") {
+    const haft = (w.params as { haftLength?: number }).haftLength ?? 0.6;
+    return haft < 0.545 ? "smallAxe" : "axe";
+  }
+  if (w.kind === "sword") {
+    const len = (w.params as { bladeLength?: number }).bladeLength ?? 1;
+    return len < 0.545 ? "dagger" : "sword";
+  }
+  if (w.kind === "bow" || w.kind === "crossbow" || w.kind === "throw") return w.kind;
+  return "sword";
+}
+/** Rotación horneada del hacha y de la hacha chica, en radianes. */
+const axeRotation = { x: 3.1384, y: -3.1216, z: -1.4716 };
+const smallAxeRotation = { x: 3.1384, y: -3.1416, z: -1.4716 };
+/** Rotación horneada del arco, en radianes. */
+const bowRotation = { x: -0.0016, y: -0.0016, z: -0.5016 };
+
+/** Offset local del arma / daga de segunda mano. */
+export const offhandHandOffset = { x: 0.4, y: 0.355, z: -0.04 };
+
 /**
  * Aplica meshes de equipo a los grips del héroe.
  * AJUSTE MANUAL de offsets: editar SOLO acá (juego + preview).
@@ -65,14 +122,19 @@ function replaceGripChild(
 export function attachEquippedVisuals(
   hero: HeroHandle,
   meshes: EquipMeshes,
-  equipment: Pick<Equipment, "weapon" | "offhand" | "helmet" | "armor" | "belt" | "boots">,
+  equipment: Pick<
+    Equipment,
+    "weapon" | "offhand" | "helmet" | "armor" | "belt" | "pants" | "boots" | "gloves"
+  >,
 ): EquipMeshes {
   const w = equipment.weapon;
   const o = equipment.offhand;
   const h = equipment.helmet;
   const a = equipment.armor;
   const belt = equipment.belt;
+  const pants = equipment.pants;
   const b = equipment.boots;
+  const gloves = equipment.gloves;
   const next = { ...meshes };
 
   // ARMA → handGrip
@@ -85,19 +147,24 @@ export function attachEquippedVisuals(
       w.kind === "crossbow")
   ) {
     const mesh = buildItemMesh(w, { lights: true });
-    // Palm bone scale≈0.37: arcos/ballestas se autorían chicos → compensar fuerte
+    // Palm bone scale≈0.37: throw/arco/xbow compensan; hacha = mismo frame que throw
     const scale =
-      w.kind === "throw" ? 2.6 : w.kind === "bow" ? 5.2 : w.kind === "crossbow" ? 4.2 : 1.15;
+      w.kind === "throw" ? 2.6 : w.kind === "bow" ? 2.35 : w.kind === "crossbow" ? 2.15 : 1.15;
     mesh.scale.setScalar(scale);
+    const off = weaponOffsets[weaponOffsetKey(w)];
+    mesh.position.set(off.x, off.y, off.z);
     if (w.kind === "bow") {
-      mesh.position.set(0.05, 0.05, 0.08);
-      mesh.rotation.set(0, 0, Math.PI / 2);
+      mesh.rotation.set(bowRotation.x, bowRotation.y, bowRotation.z);
+    } else if (w.kind === "axe") {
+      const haft = (w.params as { haftLength?: number }).haftLength ?? 0.6;
+      const hold = Math.min(0.16, haft * 0.28);
+      const rot = haft < 0.545 ? smallAxeRotation : axeRotation;
+      mesh.rotation.set(rot.x, rot.y, rot.z);
+      mesh.userData.secondHand = new THREE.Vector3(0, hold + Math.min(0.24, haft * 0.32), 0);
     } else {
       // PalmR −X ≈ cara (+Z). Tip geom espada/throw/xbow = +Z → Ry(-90).
-      // Hacha: haft +Y + Rx(-90) autor → +Z, luego Ry(+90) → −X palm.
-      mesh.position.set(0.06, 0, 0.02);
-      if (w.kind === "axe") mesh.rotation.set(-Math.PI / 2, Math.PI / 2, 0);
-      else mesh.rotation.set(0, -Math.PI / 2, 0);
+      mesh.rotation.set(0, -Math.PI / 2, 0);
+      mesh.userData.secondHand = new THREE.Vector3(0, 0, -0.16);
     }
     next.weapon = replaceGripChild(hero.handGrip, meshes.weapon, mesh);
   } else {
@@ -108,15 +175,16 @@ export function attachEquippedVisuals(
   if (o?.kind === "shield") {
     const mesh = buildItemMesh(o, { lights: true });
     mesh.scale.setScalar(1.25);
-    mesh.position.set(0, 0, -0.26);
-    mesh.rotation.set(0, -1.5, 0);
+    // Frame de grip = palm (como mano dcha); offset viejo del grip escudo horneado
+    mesh.position.set(0, -0.2, 0.02);
+    mesh.rotation.set(-0.0708, 0, Math.PI / 2);
     next.offhand = replaceGripChild(hero.offhandGrip, meshes.offhand, mesh);
-  } else if (o && (o.kind === "sword" || o.kind === "axe")) {
+  } else if (o && (o.kind === "sword" || o.kind === "axe" || o.kind === "throw")) {
     const mesh = buildItemMesh(o, { lights: true });
-    mesh.scale.setScalar(o.kind === "axe" ? 0.95 : 1.05);
-    mesh.position.set(0.12, 0.04, 0.02);
-    if (o.kind === "axe") mesh.rotation.set(-Math.PI / 2, Math.PI / 2, 0);
-    else mesh.rotation.set(0, -Math.PI / 2, 0);
+    mesh.scale.setScalar(o.kind === "throw" ? 2.4 : 1.05);
+    // PalmL espeja: punta al frente = Ry(+90). Hacha: Rx antes, el mango nace en +Y.
+    mesh.position.set(offhandHandOffset.x, offhandHandOffset.y, offhandHandOffset.z);
+    mesh.rotation.set(o.kind === "axe" ? -Math.PI / 2 : 0, Math.PI / 2, 0);
     next.offhand = replaceGripChild(hero.offhandGrip, meshes.offhand, mesh);
   } else {
     next.offhand = replaceGripChild(hero.offhandGrip, meshes.offhand, new THREE.Group());
@@ -133,20 +201,18 @@ export function attachEquippedVisuals(
     next.helmet = replaceGripChild(hero.headGrip, meshes.helmet, new THREE.Group());
   }
 
-  // -------------------------------------------------------------------------
-  // ARMADURA → torsoGrip (ARMOR_FIT en espacio hueso). y↑ / z↑ afuera
-  // -------------------------------------------------------------------------
-  if (a?.kind === "armor") {
-    const mesh = buildWornArmorMesh(a.params as ArmorParams);
-    mesh.scale.setScalar(1);
-    mesh.position.set(0, 0, -0.02);
-    mesh.rotation.set(0, 0, 0);
-    next.armor = replaceGripChild(hero.torsoGrip, meshes.armor, mesh);
+  // ARMADURA / BOTAS / GUANTES → skinnedLayer (misma deformación que el body)
+  if (a?.kind === "armor" && hero.bodySkins.length) {
+    next.armor = replaceGripChild(
+      hero.skinnedLayer,
+      meshes.armor,
+      buildSkinnedArmor(hero.bodySkins, a.params as ArmorParams),
+    );
   } else {
-    next.armor = replaceGripChild(hero.torsoGrip, meshes.armor, new THREE.Group());
+    next.armor = replaceGripChild(hero.skinnedLayer, meshes.armor, new THREE.Group());
   }
 
-  // CINTURÓN
+  // CINTURÓN (sigue en hueso Abdomen; anillo rígido OK)
   if (belt?.kind === "belt") {
     const mesh = buildWornBeltMesh(belt.params as BeltParams);
     mesh.scale.setScalar(1.15);
@@ -157,22 +223,43 @@ export function attachEquippedVisuals(
     next.belt = replaceGripChild(hero.beltGrip, meshes.belt, new THREE.Group());
   }
 
-  // BOTAS
-  if (b?.kind === "boots") {
-    const params = b.params as BootsParams;
-    next.bootL = replaceGripChild(hero.bootGripL, meshes.bootL, buildWornBootMesh(params));
-    next.bootR = replaceGripChild(hero.bootGripR, meshes.bootR, buildWornBootMesh(params));
+  if (pants?.kind === "pants" && hero.bodySkins.length) {
+    next.pants = replaceGripChild(
+      hero.skinnedLayer,
+      meshes.pants,
+      buildSkinnedPants(hero.bodySkins, pants.params as PantsParams),
+    );
   } else {
-    next.bootL = replaceGripChild(hero.bootGripL, meshes.bootL, new THREE.Group());
-    next.bootR = replaceGripChild(hero.bootGripR, meshes.bootR, new THREE.Group());
+    next.pants = replaceGripChild(hero.skinnedLayer, meshes.pants, new THREE.Group());
+  }
+
+  if (b?.kind === "boots" && hero.bodySkins.length) {
+    const shell = buildSkinnedBoots(hero.bodySkins, b.params as BootsParams);
+    next.bootL = replaceGripChild(hero.skinnedLayer, meshes.bootL, shell);
+    next.bootR = replaceGripChild(hero.skinnedLayer, meshes.bootR, new THREE.Group());
+  } else {
+    next.bootL = replaceGripChild(hero.skinnedLayer, meshes.bootL, new THREE.Group());
+    next.bootR = replaceGripChild(hero.skinnedLayer, meshes.bootR, new THREE.Group());
+  }
+
+  if (gloves?.kind === "gloves" && hero.bodySkins.length) {
+    const shell = buildSkinnedGloves(hero.bodySkins, gloves.params as GlovesParams);
+    next.gloveL = replaceGripChild(hero.skinnedLayer, meshes.gloveL, shell);
+    next.gloveR = replaceGripChild(hero.skinnedLayer, meshes.gloveR, new THREE.Group());
+  } else {
+    next.gloveL = replaceGripChild(hero.skinnedLayer, meshes.gloveL, new THREE.Group());
+    next.gloveR = replaceGripChild(hero.skinnedLayer, meshes.gloveR, new THREE.Group());
   }
 
   return next;
 }
 
 export function equipKey(
-  equipment: Pick<Equipment, "weapon" | "offhand" | "helmet" | "armor" | "belt" | "boots">,
+  equipment: Pick<
+    Equipment,
+    "weapon" | "offhand" | "helmet" | "armor" | "belt" | "pants" | "boots" | "gloves"
+  >,
 ): string {
   const id = (i: ItemInstance | null | undefined) => i?.id ?? "";
-  return `${id(equipment.weapon)}|${id(equipment.offhand)}|${id(equipment.helmet)}|${id(equipment.armor)}|${id(equipment.belt)}|${id(equipment.boots)}`;
+  return `${id(equipment.weapon)}|${id(equipment.offhand)}|${id(equipment.helmet)}|${id(equipment.armor)}|${id(equipment.belt)}|${id(equipment.pants)}|${id(equipment.boots)}|${id(equipment.gloves)}`;
 }

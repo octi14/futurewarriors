@@ -136,8 +136,8 @@
       #inv, #char {
         display: none;
         position: absolute; top: 0; bottom: 0;
-        overflow: auto;
-        padding: 16px 18px 22px;
+        overflow: hidden;
+        padding: 10px 14px 12px;
         pointer-events: auto;
         color: #3a2614;
         background:
@@ -159,7 +159,7 @@
       }
       #inv {
         right: 0;
-        width: min(480px, 100vw);
+        width: min(620px, 100vw);
         border-right: none;
         border-radius: 8px 0 0 8px;
       }
@@ -169,14 +169,16 @@
         border-left: none;
         border-radius: 0 8px 8px 0;
       }
-      #inv.open, #char.open { display: block; }
+      #inv.open, #char.open { display: flex; flex-direction: column; }
+      #char.open { overflow: auto; }
       .inv-title, .char-title {
         font-family: Cinzel, "Cormorant Garamond", serif;
-        font-size: 18px; margin-bottom: 14px; font-weight: 700;
+        font-size: 16px; margin-bottom: 8px; font-weight: 700;
         letter-spacing: 0.12em;
         color: #2a180c;
         display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
-        padding: 0 4px 10px;
+        padding: 0 4px 8px;
+        flex: 0 0 auto;
         border-bottom: none;
         background:
           linear-gradient(90deg, transparent, rgba(107,68,36,.55) 12%, rgba(107,68,36,.55) 88%, transparent) bottom / 100% 1px no-repeat;
@@ -186,16 +188,25 @@
       .inv-coins, .char-coins {
         font-family: Cinzel, serif;
         color: #7a4e10; font-weight: 700; letter-spacing: 0.04em;
+        display: inline-flex; align-items: center; gap: 6px;
+      }
+      .coin-icon {
+        width: 1.1em; height: 1.1em;
+        flex: 0 0 auto;
+        display: block;
+        overflow: visible;
       }
       .inv-body {
         display: flex;
         flex-direction: column;
-        gap: 18px;
+        gap: 8px;
         align-items: stretch;
+        flex: 1 1 auto;
+        min-height: 0;
       }
       .inv-section, .char-section {
         font-family: Cinzel, serif;
-        font-size: 11px; margin: 0 0 10px;
+        font-size: 10px; margin: 0 0 6px;
         text-transform: uppercase; letter-spacing: 0.18em;
         color: #5c3a18;
         text-align: center;
@@ -234,22 +245,24 @@
       .stat-buy-label b { color: #2c1a0c; }
       .stat-buy-cost { color: #8a5a12; font-size: 12px; white-space: nowrap; }
       .paper-doll {
-        --slot: 88px;
-        --slot-sm: 72px;
+        --slot: clamp(52px, 7.8vh, 76px);
+        --slot-lg: clamp(68px, 10vh, 96px);
+        --slot-sm: clamp(44px, 6.5vh, 62px);
+        --slot-xs: clamp(28px, 4vh, 38px);
         position: relative;
         display: grid;
-        grid-template-columns: repeat(3, var(--slot));
+        grid-template-columns: var(--slot-lg) var(--slot-lg) var(--slot-lg);
         grid-template-areas:
           ". amulet ."
           ". helmet ."
           "weapon armor offhand"
           "gloves belt pants"
-          ". boots ."
-          "ring1 . ring2";
-        gap: 12px 14px;
+          "ring1 boots ring2";
+        gap: clamp(4px, 0.8vh, 8px) clamp(8px, 1.2vw, 14px);
         justify-content: center;
         justify-items: center;
-        padding: 28px 22px 24px;
+        align-items: center;
+        padding: clamp(12px, 1.8vh, 20px) 16px;
         border-radius: 4px;
         background:
           radial-gradient(ellipse 42% 58% at 50% 46%, rgba(62, 40, 22, 0.22), transparent 70%),
@@ -341,6 +354,9 @@
         transform: translateY(-1px);
       }
       .eq-slot.sm { width: var(--slot-sm); height: var(--slot-sm); border-radius: 5px; }
+      .eq-slot.lg { width: var(--slot-lg); height: var(--slot-lg); border-radius: 7px; }
+      .eq-slot.xs { width: var(--slot-xs); height: var(--slot-xs); border-radius: 4px; padding: 2px; }
+      .eq-slot.xs .eq-glyph { width: 55%; height: 55%; }
       .eq-slot.empty { opacity: 1; }
       .eq-slot.empty .eq-glyph { opacity: 0.38; }
       .eq-slot.filled {
@@ -392,26 +408,26 @@
       }
       .eq-slot .item-icon { width: 88%; height: 88%; }
       .inv-equip, .inv-storage { min-width: 0; display: flex; flex-direction: column; align-items: center; }
+      .inv-equip { flex: 0 0 auto; }
+      .inv-storage { flex: 1 1 auto; min-height: 0; justify-content: flex-start; }
       .inv-equip .inv-section, .inv-storage .inv-section { align-self: stretch; }
       .bag-frame {
-        padding: 10px;
+        padding: 6px;
         border-radius: 4px;
         background: linear-gradient(180deg, rgba(70,45,22,0.2), rgba(40,24,12,0.28));
         border: 1px solid rgba(107, 68, 36, 0.4);
         box-shadow: inset 0 0 0 1px rgba(255, 236, 190, 0.25);
+        flex: 0 0 auto;
       }
       .bag-grid {
-        --cell: 34px;
-        --gap: 3px;
+        --cell: clamp(28px, 5.2vh, 40px);
+        --gap: 2px;
         display: grid;
         gap: var(--gap);
         width: max-content;
         margin: 0 auto;
-        padding: 8px;
-        background:
-          repeating-linear-gradient(0deg, transparent, transparent 33px, rgba(0,0,0,.08) 33px, rgba(0,0,0,.08) 34px),
-          repeating-linear-gradient(90deg, transparent, transparent 33px, rgba(0,0,0,.08) 33px, rgba(0,0,0,.08) 34px),
-          linear-gradient(180deg, #2a1c12, #1a120c);
+        padding: 6px;
+        background: linear-gradient(180deg, #2a1c12, #1a120c);
         border: 2px solid #7a5530;
         border-radius: 3px;
         box-shadow:
@@ -421,6 +437,8 @@
         overflow: visible;
       }
       .bag-cell {
+        --glow: #c4a574;
+        --glow-str: 0.2;
         width: var(--cell);
         height: var(--cell);
         background: rgba(22, 14, 8, 0.75);
@@ -428,6 +446,14 @@
         box-sizing: border-box;
         pointer-events: none;
         border-radius: 1px;
+      }
+      .bag-cell.occupied {
+        border-color: color-mix(in srgb, var(--glow) 75%, #8a6232);
+        background:
+          radial-gradient(ellipse at 50% 45%, color-mix(in srgb, var(--glow) calc(18% + 28% * var(--glow-str)), transparent), rgba(22, 14, 8, 0.55) 72%);
+        box-shadow:
+          inset 0 0 0 1px color-mix(in srgb, var(--glow) calc(35% + 40% * var(--glow-str)), transparent),
+          0 0 calc(4px + 10px * var(--glow-str)) color-mix(in srgb, var(--glow) calc(25% + 45% * var(--glow-str)), transparent);
       }
       .bag-item {
         --glow: #c4a574;
@@ -438,35 +464,23 @@
         min-width: 0;
         min-height: 0;
         margin: 0;
-        padding: 1px;
+        padding: 0;
         box-sizing: border-box;
-        border-radius: 2px;
-        border: 1px solid rgba(210, 175, 110, 0.75);
-        background:
-          radial-gradient(ellipse at 50% 40%, rgba(80,55,28,0.35), transparent 65%),
-          rgba(18, 12, 8, 0.55);
+        border-radius: 0;
+        border: none;
+        background: transparent;
         cursor: pointer;
         display: flex; align-items: center; justify-content: center;
         color: inherit; font-family: inherit;
-        box-shadow: inset 0 0 0 1px rgba(0,0,0,.25);
-      }
-      .bag-item.rarity-uncommon { border-color: color-mix(in srgb, var(--glow) 70%, #8a7a5c); }
-      .bag-item.rarity-rare { border-color: color-mix(in srgb, var(--glow) 80%, #4a6aaa); }
-      .bag-item.rarity-epic {
-        border-color: color-mix(in srgb, var(--glow) 85%, #e8c44a);
-        box-shadow:
-          inset 0 0 0 1px rgba(0,0,0,.25),
-          0 0 calc(10px + 18px * var(--glow-str)) color-mix(in srgb, var(--glow) 55%, transparent);
+        box-shadow: none;
       }
       .bag-item:hover {
-        border-color: #e8c44a;
-        background:
-          radial-gradient(ellipse at 50% 40%, rgba(120,85,35,0.4), transparent 65%),
-          rgba(22, 14, 8, 0.45);
-        box-shadow: 0 0 12px color-mix(in srgb, var(--glow) 50%, transparent);
+        border: none;
+        background: transparent;
+        filter: brightness(1.12);
       }
       .bag-item .item-icon {
-        width: 96%; height: 96%; object-fit: contain;
+        width: 92%; height: 92%; object-fit: contain;
         animation: item-float 2.8s ease-in-out infinite;
       }
       @keyframes item-float {
@@ -481,13 +495,15 @@
           border-right: 3px solid #6b4424;
         }
         .paper-doll {
-          --slot: min(88px, 26vw);
-          --slot-sm: min(72px, 22vw);
-          grid-template-columns: repeat(3, var(--slot));
-          padding: 20px 12px 18px;
-          gap: 10px;
+          --slot: min(clamp(52px, 7.8vh, 76px), 20vw);
+          --slot-lg: min(clamp(68px, 10vh, 96px), 26vw);
+          --slot-sm: min(clamp(44px, 6.5vh, 62px), 17vw);
+          --slot-xs: min(clamp(28px, 4vh, 38px), 11vw);
+          grid-template-columns: var(--slot-lg) var(--slot-lg) var(--slot-lg);
+          padding: 10px 10px 8px;
+          gap: 6px;
         }
-        .bag-grid { --cell: min(34px, calc((100vw - 56px) / 10 - 2px)); }
+        .bag-grid { --cell: min(clamp(28px, 5.2vh, 40px), calc((100vw - 48px) / 10 - 2px)); }
       }
       #tooltip {
         position: fixed; z-index: 50; display: none;
@@ -499,7 +515,7 @@
         pointer-events: none;
       }
       #tooltip.show { display: block; }
-      #tooltip .tt-name { font-size: 14px; color: #f0e0c0; margin-bottom: 4px; }
+      #tooltip .tt-name { font-size: 18px; font-weight: 700; line-height: 1.25; margin-bottom: 6px; }
       #tooltip .tt-meta { opacity: 0.7; text-transform: uppercase; font-size: 10px; margin-bottom: 8px; }
       #tooltip .tt-stat { margin: 2px 0; }
       #tooltip .tt-hint { margin-top: 8px; opacity: 0.55; font-size: 11px; }
@@ -554,10 +570,12 @@
           </div>
         </div>
         <div id="help" class="panel">
-          <div><b>Mouse</b> mirar</div>
+          <div><b>Mouse</b> mirar (parado)</div>
           <div><b>WASD</b> mover</div>
           <div><b>Shift</b> correr</div>
-          <div><b>Click / Espacio</b> atacar</div>
+          <div><b>Espacio</b> saltar</div>
+          <div><b>X</b> agachar</div>
+          <div><b>Click</b> atacar</div>
           <div><b>Click der.</b> escudo (bloquear)</div>
           <div><b>Atacar corriendo</b> especial (según arma)</div>
           <div><b>I</b> inventario</div>

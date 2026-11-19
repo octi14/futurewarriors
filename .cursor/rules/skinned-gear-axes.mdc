@@ -1,0 +1,22 @@
+---
+description: Ejes del HumanMale, pantalón shell y zapatillas
+globs: src/render/skinnedGear.ts
+alwaysApply: false
+---
+
+# Skinned gear — ejes HumanMale
+
+## Torso / pantalón
+
+- **Frente = +Z**, espalda = **−Z**.
+- **Scale del pantalón ≠ shapeScale.x**: multiplicar X abre la V. Scale = más `inflate` + sesgo **+Z** + `closeFrontMidline`.
+- **Altura (waistRise)**: `minWeight` + Abdomen (rise≥0.25) + **`maxBindY ≈ 0`** (bind). Sin tope Y el Abdomen se come el torso.
+- **Largo (length)**: **`minBindY ≈ -0.52…-0.74`** corta el dobladillo (no usa rise). Sin piso Y el shell llega a las botas.
+- Huesos: `UpperLeg*`, `Hips`, `Abdomen`. Exclude: `Torso`, `Neck`.
+
+## Zapatillas / Foot*
+
+- Foot*: **+Z ≈ arriba**, **+Y ≈ puntera**, **±X costados**.
+- Medir shell: `measureFootShellFit` (percentiles en espacio Foot).
+- **Canvas (lona)**: suela en `min.z`, cordones en `max.z` → `buildCanvasDetailsOnFootFit` (sin wrap).
+- Otros estilos: `wrapForFoot` con `Rx(π/2)·Rz(π)`; suela alineada a `fit.min.z`.

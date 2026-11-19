@@ -1,12 +1,19 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/examples/jsm/libs/meshopt_decoder.module.js";
+import { clone as cloneSkinned } from "three/examples/jsm/utils/SkeletonUtils.js";
+import type { GLTF } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { CombatAnimKind } from "../shared/types";
+import type { AiBodyHandle } from "./aiBody";
 
 export type HeroHandle = {
   root: THREE.Group;
   mixer: THREE.AnimationMixer | null;
   actions: Record<string, THREE.AnimationAction>;
+  /** SkinnedMeshes del cuerpo (para cascarones de equipo). */
+  bodySkins: THREE.SkinnedMesh[];
+  /** Capa de equipo skinned (mismo skeleton, flexiona con el body). */
+  skinnedLayer: THREE.Group;
   handGrip: THREE.Group;
   offhandGrip: THREE.Group;
   headGrip: THREE.Group;
@@ -14,6 +21,8 @@ export type HeroHandle = {
   beltGrip: THREE.Group;
   bootGripL: THREE.Group;
   bootGripR: THREE.Group;
+  gloveGripL: THREE.Group;
+  gloveGripR: THREE.Group;
   setHurt: (hurt: boolean) => void;
   update: (
     dt: number,
@@ -22,12 +31,14 @@ export type HeroHandle = {
     swinging: boolean,
     running?: boolean,
     stance?: CombatAnimKind | "idle" | "onehand",
+    activelyBlocking?: boolean,
   ) => void;
   /**
    * Animación de combate.
    * u 0..1 progreso del swing; anim = throw/dual/bow/…; blocking = escudo.
+   * variant = índice de trayectoria de espadazo (0..n).
    */
-  applyCombat: (u: number, anim: CombatAnimKind, blocking?: boolean) => void;
+  applyCombat: (u: number, anim: CombatAnimKind, blocking?: boolean, variant?: number) => void;
   /** @deprecated usar applyCombat */
   applySlash: (u: number, variant?: number) => void;
 };
@@ -44,12 +55,71 @@ function findObj(root: THREE.Object3D, names: string[]): THREE.Object3D | null {
  * Héroe = humano CC0 Quaternius (Smooth Male), skinned + animaciones.
  * Procedural/metaballs no dan anatomía creíble; hace falta un mesh real.
  */
+let humanGltf: Promise<GLTF> | null = null;
+function loadHuman(): Promise<GLTF> {
+  if (!humanGltf) {
+    const loader = new GLTFLoader();
+    loader.setMeshoptDecoder(MeshoptDecoder);
+    humanGltf = loader.loadAsync("/models/HumanMale.glb");
+  }
+  return humanGltf;
+}
+
+/** Misma malla y piel que el jugador. Llamar después de createHero. */
+export function makeLookalike(): AiBodyHandle {
+  if (!styledHuman) throw new Error("makeLookalike antes de createHero");
+  const model = cloneSkinned(styledHuman);
+  const mats: THREE.MeshStandardMaterial[] = [];
+  model.traverse((o) => {
+    if (!(o instanceof THREE.Mesh)) return;
+    const list = Array.isArray(o.material) ? o.material : [o.material];
+    const cloned = list.map((m) => m.clone());
+    o.material = Array.isArray(o.material) ? cloned : cloned[0]!;
+    for (const m of cloned) if (m instanceof THREE.MeshStandardMaterial) mats.push(m);
+  });
+  const root = new THREE.Group();
+  root.add(model);
+  const mixer = new THREE.AnimationMixer(model);
+  const clip = (names: string[]) => {
+    const found = humanClips.find((a) => names.includes(a.name)) ?? humanClips[0];
+    return mixer.clipAction(found!);
+  };
+  const idle = clip(["Man_Idle", "Man_Standing"]);
+  const walk = clip(["Man_Walk"]);
+  idle.play();
+  walk.play();
+  idle.weight = 1;
+  walk.weight = 0;
+  return {
+    root,
+    update(dt, _walkPhase, moving, _swingU, hurt, deathU = 0, fade = 1) {
+      walk.weight = THREE.MathUtils.damp(walk.weight, moving ? 1 : 0, 12, dt);
+      idle.weight = THREE.MathUtils.damp(idle.weight, moving ? 0 : 1, 12, dt);
+      mixer.update(dt);
+      root.rotation.x = deathU * 1.35;
+      for (const m of mats) {
+        m.transparent = fade < 0.99;
+        m.opacity = fade;
+        m.emissive.setHex(hurt ? 0x3a1010 : 0);
+      }
+    },
+    dispose() {
+      mixer.stopAllAction();
+      for (const m of mats) m.dispose();
+    },
+  };
+}
+
+let styledHuman: THREE.Object3D | null = null;
+let humanClips: THREE.AnimationClip[] = [];
+
 export async function createHero(): Promise<HeroHandle> {
-  const loader = new GLTFLoader();
-  loader.setMeshoptDecoder(MeshoptDecoder);
-  const gltf = await loader.loadAsync("/models/HumanMale.glb");
+  const gltf = await loadHuman();
+  humanClips = gltf.animations;
   const model = gltf.scene;
 
+  // Piel clara + ropa bakeada (Shirt/Pants) al mismo tono → se ve “sin ropa”
+  const skinTone = new THREE.Color(0xf2d4b8);
   model.traverse((o) => {
     if (o instanceof THREE.Mesh) {
       o.castShadow = true;
@@ -59,6 +129,12 @@ export async function createHero(): Promise<HeroHandle> {
         if (m instanceof THREE.MeshStandardMaterial) {
           m.roughness = Math.min(1, m.roughness ?? 0.7);
           m.metalness = 0;
+          if (m.name === "Skin" || m.name === "Shirt" || m.name === "Pants") {
+            m.color.copy(skinTone);
+            m.map = null;
+            m.roughness = 0.68;
+            m.metalness = 0;
+          }
         }
       }
     }
@@ -70,9 +146,18 @@ export async function createHero(): Promise<HeroHandle> {
   if (size.y > 0.01) model.scale.setScalar(1.78 / size.y);
   box.setFromObject(model);
   model.position.y = -box.min.y;
+  styledHuman = model;
 
   const root = new THREE.Group();
   root.add(model);
+
+  const bodySkins: THREE.SkinnedMesh[] = [];
+  model.traverse((o) => {
+    if (o instanceof THREE.SkinnedMesh) bodySkins.push(o);
+  });
+  const skinnedLayer = new THREE.Group();
+  skinnedLayer.name = "skinned-gear";
+  model.add(skinnedLayer);
 
   model.updateMatrixWorld(true);
   const palmR =
@@ -107,11 +192,22 @@ export async function createHero(): Promise<HeroHandle> {
   handGrip.position.set(0, 0.02, 0.02);
   handGrip.rotation.set(0, 0, 0);
   palmR.add(handGrip);
+  const handGripRest = {
+    px: handGrip.position.x,
+    py: handGrip.position.y,
+    pz: handGrip.position.z,
+    rx: 0,
+    ry: 0,
+    rz: 0,
+  };
 
-  /** Escudo / offhand (mano izquierda) — PalmL */
+  /**
+   * Offhand — PalmL. Mismo frame local que handGrip (armas duales).
+   * El escudo compensa con offset propio en equipAttach.
+   */
   const offhandGrip = new THREE.Group();
-  offhandGrip.position.set(0, 0.08, 0.04);
-  offhandGrip.rotation.set(-Math.PI / 2, 0, Math.PI / 2);
+  offhandGrip.position.set(0, 0.02, 0.02);
+  offhandGrip.rotation.set(0, 0, 0);
   palmL.add(offhandGrip);
 
   /** Casco — Head (+Y ≈ arriba del cráneo) */
@@ -136,18 +232,34 @@ export async function createHero(): Promise<HeroHandle> {
   beltBone.add(beltGrip);
 
   /** Bota izquierda — FootL */
+  // Foot: +Z≈arriba mundo, +Y≈adelante. Mesh bota: +Y caña, +Z puntera.
   const bootGripL = new THREE.Group();
-  bootGripL.position.set(0, 0.06, 0.02);
-  bootGripL.rotation.set(-0.15, 0, 0);
-  bootGripL.scale.setScalar(1.35);
+  bootGripL.position.set(0, 0.08, -0.05);
+  bootGripL.rotation.set(Math.PI / 2, Math.PI, 0);
+  bootGripL.scale.setScalar(1.3);
   footL.add(bootGripL);
 
   /** Bota derecha — FootR */
   const bootGripR = new THREE.Group();
-  bootGripR.position.set(0, 0.06, 0.02);
-  bootGripR.rotation.set(-0.15, 0, 0);
-  bootGripR.scale.setScalar(1.35);
+  bootGripR.position.set(0, 0.08, -0.05);
+  bootGripR.rotation.set(Math.PI / 2, Math.PI, 0);
+  bootGripR.scale.setScalar(1.3);
   footR.add(bootGripR);
+
+  /** Guantes — MiddleHand (+Y ≈ dedos; ±X acerca a la palma). */
+  const midHandR = findObj(model, ["MiddleHandR"]) ?? palmR;
+  const midHandL = findObj(model, ["MiddleHandL"]) ?? palmL;
+  const gloveGripR = new THREE.Group();
+  gloveGripR.position.set(-0.08, 0.05, 0.04);
+  gloveGripR.rotation.set(0.1, 0, 0);
+  gloveGripR.scale.setScalar(2.3);
+  midHandR.add(gloveGripR);
+
+  const gloveGripL = new THREE.Group();
+  gloveGripL.position.set(0.08, 0.05, 0.04);
+  gloveGripL.rotation.set(0.1, 0, 0);
+  gloveGripL.scale.setScalar(2.3);
+  midHandL.add(gloveGripL);
 
   const mixer = new THREE.AnimationMixer(model);
   const byName = new Map(gltf.animations.map((c) => [c.name, c]));
@@ -192,7 +304,91 @@ export async function createHero(): Promise<HeroHandle> {
   let activeSlash = slashA;
   let lastAnim: CombatAnimKind = "slash";
   let lastU = 0;
+  let lastVariant = 0;
   let lastBlocking = false;
+
+  function resetHandGrip(): void {
+    handGrip.position.set(handGripRest.px, handGripRest.py, handGripRest.pz);
+    handGrip.rotation.set(handGripRest.rx, handGripRest.ry, handGripRest.rz);
+  }
+
+  /** Progreso de hoja: wind-up más largo → corte → follow-through. */
+  function bladeProgress(u: number): number {
+    const x = Math.min(1, Math.max(0, u));
+    if (x < 0.28) {
+      const t = x / 0.28;
+      return t * t * 0.18;
+    }
+    if (x < 0.58) {
+      const t = (x - 0.28) / 0.3;
+      const e = 1 - Math.pow(1 - t, 2.2);
+      return 0.18 + e * 0.62;
+    }
+    const t = (x - 0.58) / 0.42;
+    const e = t * t * (3 - 2 * t);
+    return 0.8 + e * 0.2;
+  }
+
+  const _ikTarget = new THREE.Vector3();
+  const _carry = new THREE.Vector3();
+  const _ikJ = new THREE.Vector3();
+  const _ikTip = new THREE.Vector3();
+  const _ikToTip = new THREE.Vector3();
+  const _ikToTgt = new THREE.Vector3();
+  const _ikAxis = new THREE.Vector3();
+  const _ikQ = new THREE.Quaternion();
+
+  /** Punto de la otra mano en espacio handGrip (lo marca el arma al equiparse). */
+  function hiltSupportLocal(out: THREE.Vector3): THREE.Vector3 {
+    const weapon = handGrip.children[0];
+    const local = weapon?.userData.secondHand as THREE.Vector3 | undefined;
+    if (weapon && local) {
+      weapon.updateMatrix();
+      return out.copy(local).applyMatrix4(weapon.matrix);
+    }
+    return out.set(0.1, -0.025, 0.015);
+  }
+
+  /** CCD 2 huesos. target en mundo. */
+  function placeHand(joints: THREE.Object3D[], tip: THREE.Object3D, target: THREE.Vector3): void {
+    for (let iter = 0; iter < 8; iter++) {
+      for (let i = joints.length - 1; i >= 0; i--) {
+        const j = joints[i]!;
+        j.updateWorldMatrix(true, true);
+        tip.updateWorldMatrix(true, true);
+        _ikJ.setFromMatrixPosition(j.matrixWorld);
+        _ikTip.setFromMatrixPosition(tip.matrixWorld);
+        _ikToTip.copy(_ikTip).sub(_ikJ).normalize();
+        _ikToTgt.copy(target).sub(_ikJ).normalize();
+        const dot = THREE.MathUtils.clamp(_ikToTip.dot(_ikToTgt), -1, 1);
+        const angle = Math.acos(dot);
+        if (angle < 0.002) continue;
+        _ikAxis.copy(_ikToTip).cross(_ikToTgt);
+        if (_ikAxis.lengthSq() < 1e-8) continue;
+        _ikAxis.normalize();
+        // Eje en espacio local: rotateOnWorldAxis ignora el yaw del cuerpo y el brazo gira al mover el mouse.
+        j.getWorldQuaternion(_ikQ);
+        _ikAxis.applyQuaternion(_ikQ.invert());
+        j.rotateOnAxis(_ikAxis, angle * 0.85);
+      }
+    }
+  }
+
+  /** Lleva la mano derecha delante del pecho: si no, el arma queda fuera del alcance izquierdo. */
+  function placeRightHandForward(): void {
+    if (!upperArmR || !lowerArmR) return;
+    _carry.set(0, -0.12, 0.7);
+    torsoBone.localToWorld(_carry);
+    placeHand([upperArmR, lowerArmR], palmR, _carry);
+  }
+
+  function placeLeftHandOnHilt(): void {
+    if (!upperArmL || !lowerArmL) return;
+    handGrip.updateWorldMatrix(true, true);
+    const target = hiltSupportLocal(_ikTarget);
+    handGrip.localToWorld(target);
+    placeHand([upperArmL, lowerArmL], palmL, target);
+  }
 
   const actions: Record<string, THREE.AnimationAction> = {
     idle,
@@ -257,21 +453,39 @@ export async function createHero(): Promise<HeroHandle> {
     const pulse = Math.sin(Math.min(1, u) * Math.PI);
 
     if (blocking || anim === "block") {
-      // Escudo adelante
-      upperArmL.rotation.x = armRest.uL.x - 1.1;
-      upperArmL.rotation.y = armRest.uL.y + 0.35;
-      if (lowerArmL) lowerArmL.rotation.x = armRest.lL.x - 0.4;
-      upperArmR.rotation.x = armRest.uR.x - 0.35;
+      // Solo brazos: piernas siguen del mixer (walk/idle)
+      const hard = blocking;
+      const raise = hard ? 1.05 : 0.7;
+      upperArmL.rotation.x = armRest.uL.x - raise;
+      upperArmL.rotation.y = armRest.uL.y + (hard ? 0.4 : 0.22);
+      upperArmL.rotation.z = armRest.uL.z + (hard ? 0.12 : 0.05);
+      if (lowerArmL) lowerArmL.rotation.x = armRest.lL.x - (hard ? 0.45 : 0.22);
+      if (hard) {
+        upperArmR.rotation.x = armRest.uR.x - 0.28;
+      }
       return;
     }
 
-    if (anim === "onehand" || anim === "slash") {
+    if (anim === "onehand") {
       relaxLeftArm();
+      resetHandGrip();
+      return;
+    }
+
+    if (anim === "slash" || anim === "dualR") {
+      applySwordArc(u, anim, lastVariant);
+      return;
+    }
+
+    if (anim === "twohand") {
+      // Swing a 2H; la guarda idle usa applyTwoHandCarry
+      applySwordArc(u, "twohand", lastVariant);
       return;
     }
 
     if (anim === "throw") {
       relaxLeftArm();
+      resetHandGrip();
       const wind = u < 0.35 ? u / 0.35 : 1 - (u - 0.35) / 0.65;
       upperArmR.rotation.x = armRest.uR.x - 1.6 * wind + pulse * 0.9;
       upperArmR.rotation.z = armRest.uR.z + 0.5 * wind;
@@ -305,44 +519,145 @@ export async function createHero(): Promise<HeroHandle> {
       upperArmL.rotation.x = armRest.uL.x - 1.4 * pulse;
       upperArmL.rotation.y = armRest.uL.y - 0.35 * pulse;
       if (lowerArmL) lowerArmL.rotation.x = armRest.lL.x - 0.5 * pulse;
-      return;
-    }
-
-    if (anim === "dualR") {
-      relaxLeftArm();
-      upperArmR.rotation.x = armRest.uR.x - 0.3 * pulse;
-      return;
-    }
-
-    if (anim === "twohand") {
-      // Empuñadura a dos manos: izq cerca del arma
-      const hold = 0.55 + 0.45 * (1 - pulse);
-      upperArmL.rotation.x = armRest.uL.x - 0.75 * hold;
-      upperArmL.rotation.y = armRest.uL.y + 0.55 * hold;
-      upperArmL.rotation.z = armRest.uL.z - 0.25 * hold;
-      if (lowerArmL) lowerArmL.rotation.x = armRest.lL.x - 0.35 * hold;
     }
   }
 
-  function applyCombat(u: number, anim: CombatAnimKind, blocking = false): void {
+  /**
+   * Arco de espada creíble: cámara → diagonal de corte → follow-through.
+   * variant 0 diagonal, 1 revés, 2 vertical.
+   */
+  function applySwordArc(u: number, style: "slash" | "twohand" | "dualR", variant: number): void {
+    if (!upperArmR) return;
+    const a = bladeProgress(u);
+    const kind = ((variant % 3) + 3) % 3;
+    // start → mid → end (deltas sobre armRest)
+    let sUx: number, sUy: number, sUz: number, sLx: number;
+    let eUx: number, eUy: number, eUz: number, eLx: number;
+    let mUx: number, mUy: number, mUz: number, mLx: number;
+    let wSx: number, wSy: number, wSz: number;
+    let wEx: number, wEy: number, wEz: number;
+
+    if (kind === 2) {
+      // Overhead chop
+      sUx = -1.55; sUy = -0.15; sUz = 0.35; sLx = -1.05;
+      mUx = -0.55; mUy = 0.05; mUz = -0.1; mLx = -0.25;
+      eUx = 0.55; eUy = 0.2; eUz = -0.45; eLx = 0.35;
+      wSx = -0.55; wSy = 0.15; wSz = 0.75;
+      wEx = 1.15; wEy = -0.25; wEz = -1.05;
+    } else if (kind === 1) {
+      // Backhand: low-out → high-across
+      sUx = -0.35; sUy = 0.75; sUz = -0.55; sLx = -0.55;
+      mUx = -0.95; mUy = 0.1; mUz = 0.15; mLx = -0.35;
+      eUx = -1.25; eUy = -0.65; eUz = 0.7; eLx = -0.15;
+      wSx = 0.35; wSy = -0.45; wSz = -0.55;
+      wEx = -0.85; wEy = 0.55; wEz = 1.1;
+    } else {
+      // Forehand diagonal high → low across
+      sUx = -1.4; sUy = -0.65; sUz = 0.85; sLx = -1.0;
+      mUx = -0.75; mUy = 0.15; mUz = 0.05; mLx = -0.35;
+      eUx = 0.35; eUy = 0.85; eUz = -0.75; eLx = 0.25;
+      wSx = -0.35; wSy = 0.45; wSz = 0.95;
+      wEx = 0.95; wEy = -0.55; wEz = -1.25;
+    }
+
+    const lerp2 = (p0: number, p1: number, p2: number, t: number) => {
+      if (t < 0.5) {
+        const k = t / 0.5;
+        return p0 + (p1 - p0) * k;
+      }
+      const k = (t - 0.5) / 0.5;
+      return p1 + (p2 - p1) * k;
+    };
+
+    upperArmR.rotation.x = armRest.uR.x + lerp2(sUx, mUx, eUx, a);
+    upperArmR.rotation.y = armRest.uR.y + lerp2(sUy, mUy, eUy, a);
+    upperArmR.rotation.z = armRest.uR.z + lerp2(sUz, mUz, eUz, a);
+    if (lowerArmR) {
+      lowerArmR.rotation.x = armRest.lR.x + lerp2(sLx, mLx, eLx, a);
+      lowerArmR.rotation.y = armRest.lR.y;
+      lowerArmR.rotation.z = armRest.lR.z;
+    }
+
+    // Muñeca: la hoja adelanta el corte (edge lead)
+    const wr = a < 0.5 ? a / 0.5 : 1;
+    handGrip.rotation.x = handGripRest.rx + wSx + (wEx - wSx) * wr;
+    handGrip.rotation.y = handGripRest.ry + wSy + (wEy - wSy) * wr;
+    handGrip.rotation.z = handGripRest.rz + wSz + (wEz - wSz) * wr;
+    // Ligero avance del grip en el impacto
+    const thrust = Math.sin(Math.min(1, Math.max(0, (a - 0.12) / 0.45)) * Math.PI) * 0.03;
+    handGrip.position.set(handGripRest.px, handGripRest.py + thrust, handGripRest.pz + thrust * 0.6);
+
+    if (style === "dualR" && upperArmL) {
+      const pulse = Math.sin(Math.min(1, a) * Math.PI);
+      upperArmL.rotation.x = armRest.uL.x - 1.4 * pulse;
+      upperArmL.rotation.y = armRest.uL.y - 0.35 * pulse;
+      if (lowerArmL) lowerArmL.rotation.x = armRest.lL.x - 0.5 * pulse;
+      offhandGrip.rotation.z = -0.9 * pulse;
+    } else if (style === "twohand" && upperArmL) {
+      // Semilla: izquierda acompaña; luego IK la pega a la empuñadura
+      upperArmL.rotation.x = armRest.uL.x + lerp2(sUx * 0.75, mUx * 0.7, eUx * 0.65, a);
+      upperArmL.rotation.y = armRest.uL.y - lerp2(sUy, mUy, eUy, a) * 0.85 - 0.35;
+      upperArmL.rotation.z = armRest.uL.z - lerp2(sUz, mUz, eUz, a) * 0.7;
+      if (lowerArmL) {
+        lowerArmL.rotation.x = armRest.lL.x + lerp2(sLx, mLx, eLx, a) * 0.85 - 0.25;
+      }
+      placeLeftHandOnHilt();
+    } else {
+      relaxLeftArm();
+      offhandGrip.rotation.set(0, 0, 0);
+    }
+  }
+
+  /** Portar arma a dos manos: ambas manos en la empuñadura. */
+  function applyTwoHandCarry(): void {
+    if (!upperArmR || !upperArmL) return;
+    upperArmR.rotation.x = armRest.uR.x - 0.72;
+    upperArmR.rotation.y = armRest.uR.y + 0.55;
+    upperArmR.rotation.z = armRest.uR.z + 0.18;
+    if (lowerArmR) {
+      lowerArmR.rotation.x = armRest.lR.x - 0.85;
+      lowerArmR.rotation.y = armRest.lR.y;
+      lowerArmR.rotation.z = armRest.lR.z;
+    }
+
+    // Semilla cruzada hacia el arma (IK termina de juntar)
+    upperArmL.rotation.x = armRest.uL.x - 0.75;
+    upperArmL.rotation.y = armRest.uL.y - 0.7;
+    upperArmL.rotation.z = armRest.uL.z - 0.32;
+    if (lowerArmL) {
+      lowerArmL.rotation.x = armRest.lL.x - 0.95;
+      lowerArmL.rotation.y = armRest.lL.y;
+      lowerArmL.rotation.z = armRest.lL.z;
+    }
+
+    // +x local baja el arma a la altura de los puños (el offset de la espada la dejaba arriba)
+    handGrip.position.set(handGripRest.px + 0.42, handGripRest.py + 0.015, handGripRest.pz + 0.05);
+    handGrip.rotation.set(handGripRest.rx + 0.28, handGripRest.ry - 0.12, handGripRest.rz + 0.5);
+    placeRightHandForward();
+    placeLeftHandOnHilt();
+  }
+
+  function applyCombat(u: number, anim: CombatAnimKind, blocking = false, variant = 0): void {
     lastAnim = anim;
     lastU = u;
+    lastVariant = variant;
     lastBlocking = blocking;
     if (blocking || anim === "block") {
       for (const s of slashVariants) s.weight = 0;
-      idle.weight = 0.35;
+      resetHandGrip();
       return;
     }
-    // Clips: Punch para throw/dualL/bow; SwordSlash para el resto
     const usePunch =
       anim === "throw" || anim === "dualL" || anim === "bow" || anim === "crossbow";
-    const clip = usePunch ? slashB : anim === "twohand" ? slashA : u > 0.5 ? slashC : slashA;
-    const reverse = anim === "dualR" && clip === slashC;
-    scrubClip(clip, u, reverse);
+    // Un solo clip estable (sin salto a mitad del swing); brazos van procedural
+    const clip = usePunch ? slashB : slashA;
+    const scrubU =
+      anim === "slash" || anim === "twohand" || anim === "dualR" ? bladeProgress(u) : u;
+    scrubClip(clip, scrubU, false);
   }
 
   function applySlash(u: number, variant = 0): void {
-    applyCombat(u, variant === 1 ? "dualL" : "slash", false);
+    applyCombat(u, variant === 1 ? "dualL" : "slash", false, variant);
   }
 
   function update(
@@ -352,8 +667,11 @@ export async function createHero(): Promise<HeroHandle> {
     swinging: boolean,
     running = false,
     stance: CombatAnimKind | "idle" | "onehand" = "idle",
+    activelyBlocking = false,
   ): void {
-    if (!swinging && !lastBlocking && stance !== "block") {
+    if (!activelyBlocking) lastBlocking = false;
+    // Locomoción siempre (salvo swing de ataque que usa clips de slash)
+    if (!swinging) {
       for (const s of slashVariants) {
         s.weight = THREE.MathUtils.damp(s.weight, 0, 10, dt);
       }
@@ -367,16 +685,22 @@ export async function createHero(): Promise<HeroHandle> {
       run.paused = false;
     }
     mixer.update(dt);
-    // Overlay de brazos DESPUÉS del mixer
-    if (swinging || lastBlocking) {
-      applyArmOverlay(lastAnim, lastU, lastBlocking);
-    } else if (stance === "block") {
-      applyArmOverlay("block", 1, true);
-    } else if (stance === "twohand" || stance === "bow" || stance === "crossbow") {
-      applyArmOverlay(stance, 0.2, false);
-    } else if (stance === "onehand" && activeSlash.weight > 0.05) {
-      // Mientras muere el clip de slash, forzar brazo izq suelto (el clip lo deja “en escudo”)
-      applyArmOverlay("onehand", 0, false);
+    // Overlay de brazos DESPUÉS del mixer (no congela piernas)
+    if (swinging) {
+      applyArmOverlay(lastAnim, lastU, false);
+    } else {
+      resetHandGrip();
+      if (activelyBlocking || lastBlocking) {
+        applyArmOverlay("block", 1, true);
+      } else if (stance === "block") {
+        applyArmOverlay("block", 1, false);
+      } else if (stance === "twohand") {
+        applyTwoHandCarry();
+      } else if (stance === "bow" || stance === "crossbow") {
+        applyArmOverlay(stance, 0.2, false);
+      } else if (stance === "onehand" && activeSlash.weight > 0.05) {
+        applyArmOverlay("onehand", 0, false);
+      }
     }
   }
 
@@ -384,6 +708,8 @@ export async function createHero(): Promise<HeroHandle> {
     root,
     mixer,
     actions,
+    bodySkins,
+    skinnedLayer,
     handGrip,
     offhandGrip,
     headGrip,
@@ -391,6 +717,8 @@ export async function createHero(): Promise<HeroHandle> {
     beltGrip,
     bootGripL,
     bootGripR,
+    gloveGripL,
+    gloveGripR,
     setHurt,
     update,
     applyCombat,
