@@ -1,10 +1,10 @@
 export type Vec2 = { x: number; y: number };
 
-export type Rarity = "common" | "uncommon" | "rare" | "epic";
+export type Rarity = "vulgar" | "common" | "regular" | "uncommon" | "rare" | "exceptional" | "epic" | "legendary" | "mythic";
 
 export type SwordParams = {
   seed: number;
-  bladeType: "straight" | "curved" | "wide";
+  bladeType: "straight" | "curved" | "wide"; //ideas: katana, lightsaber, esgrima.
   bladeLength: number;
   bladeWidth: number;
   guardSpan: number;
@@ -34,7 +34,8 @@ export type AxeParams = {
 
 export type ThrowParams = {
   seed: number;
-  subtype: "throwingAxe" | "throwingDagger" | "shuriken" | "javelin";
+  subtype: "throwingAxe" | "throwingDagger" | "shuriken" | "javelin"; 
+  /* ideas: molotov, gas lacrimógeno, bazuka (legendary+)*/
   size: number;
   metalHue: number;
   rarity: Rarity;
@@ -61,6 +62,7 @@ export type BootsParams = {
   /**
    * canvas=lona baja, sport=zapatilla deportiva, military=zapato/bota militar,
    * combat=borcegos, trail=caña alta trekking, greaves/plate=metal.
+   * revisar si existen: sandal, loafer, oxford, riding, dress, work, ski, crocs. si no existen, agregar.
    */
   style:
     | "canvas"
@@ -77,7 +79,8 @@ export type BootsParams = {
     | "riding"
     | "dress"
     | "work"
-    | "ski";
+    | "ski"
+    | "crocs";
   /** Tono del metal (plate/greaves); none en tela/cuero. */
   metalTone: "none" | "steel" | "gold" | "copper";
   height: number;
@@ -88,9 +91,10 @@ export type BootsParams = {
 
 export type ShieldParams = {
   seed: number;
-  shape: "round" | "heater" | "kite" | "buckler" | "targe" | "tower" | "pavise";
+  shape: "round" | "heater" | "kite" | "buckler" | "targe" | "tower" | "pavise"; 
+  /*ideas: tapa de cubo de basura, pequeña puerta de metal, postigo de madera, escudo de plástico.*/
   /** Madera, madera con herrajes, o metal macizo. */
-  material: "wood" | "reinforced" | "metal";
+  material: "wood" | "reinforced" | "metal"; //ideas: plastic, chapa(traducir a inglés), acero, adamantium, obsidiana.
   width: number;
   height: number;
   boss: number;
@@ -126,8 +130,10 @@ export type HelmetParams = {
     | "coif"
     | "crown"
     | "bucket";
+    /* ideas: casco swat, máscara de gas, casco de la nasa, casco de max verstappen(mythical only), casco de f1 (uncommon+/rare+), orejeras (common-),
+    gorra común(nba, nfl, motorsport), mariachi (low quality pero very low drop rate), el chavo(low quality, very low drop rate) */
   /** Cuero endurecido, bronce/latón, o acero. */
-  material: "leather" | "bronze" | "steel";
+  material: "leather" | "bronze" | "steel"; //incorporar: material de los cascos de moto/carreras y otros que falten para construir todos los cascos bien.
   dome: number;
   brim: number;
   metalHue: number;
@@ -161,6 +167,9 @@ export type ArmorParams = {
     | "hauberk"
     | "lamellar"
     | "cuirass";
+    /** ideas: traje de swat(epic+), cota de malla de anillas real, campera de nieve, remeras históricas (remera del chavo del ocho,
+     * remeras de equipos de fútbol, musculosas de la nba, remeras de selecciones de fútbol, remeras genéricas, remeras de grupos de música, 
+     * remeras de escuderías de fórmula 1 */
   /** Manga: none=chaleco, short, long. */
   sleeves: "none" | "short" | "long";
   /**
@@ -210,7 +219,7 @@ export type PantsParams = {
     | "chaps"
     | "kilt"
     | "breeches"
-    | "fatigues";
+    | "fatigues"; //ideas: pantalon de armadura, pantalón de fútbol
   length: number;
   hue: number;
   rarity: Rarity;
@@ -228,6 +237,9 @@ export type PantsParams = {
 export type GlovesParams = {
   seed: number;
   style: "cloth" | "leather" | "gauntlet" | "wraps" | "mittens" | "bracers";
+  /* estilo: cloth=tejido, leather=cuero, gauntlet=guante de batalla, wraps=guantes de cuero, mittens=guantes de punto,
+   bracers=brazaletes */
+  /* ideas: guantes de boxeo, guantes de arquero de fútbol, guantes de limpieza de cocina/baño */
   bulk: number;
   hue: number;
   rarity: Rarity;
@@ -236,6 +248,7 @@ export type GlovesParams = {
 export type BeltParams = {
   seed: number;
   style: "rope" | "leather" | "plated" | "sash" | "chainbelt" | "utility";
+  /* estilo: rope=cordón, leather=cuero, plated=placas, sash=cinturón, chainbelt=cinturón de cadena, utility=utilidad */
   width: number;
   hue: number;
   rarity: Rarity;
@@ -244,8 +257,8 @@ export type BeltParams = {
 /** Stats unificados: armas llenan combate; gear llena bonuses. */
 export type RingParams = {
   seed: number;
-  style: "band" | "signet" | "gem" | "skull" | "braided";
-  gem: "none" | "ruby" | "sapphire" | "emerald" | "diamond";
+  style: "band" | "signet" | "gem" | "skull" | "braided"; //idea: que haya de plata/oro/platino/brillantes.
+  gem: "none" | "ruby" | "sapphire" | "emerald" | "diamond"; //ideas: topacio, amatista, obsidiana, jade, azabache.
   metalHue: number;
   rarity: Rarity;
 };
@@ -257,6 +270,9 @@ export type AmuletParams = {
   rarity: Rarity;
 };
 
+/** Un solo elemento por arma; gear no-arma puede sumar el mismo u otro. */
+export type ElementKind = "fire" | "ice" | "lightning" | "poison";
+
 export type ItemStats = {
   damage: number;
   reach: number;
@@ -265,6 +281,27 @@ export type ItemStats = {
   armor: number;
   moveSpeedMult: number;
   maxHpBonus: number;
+  /** Elemento del ítem (armas: a lo sumo uno). */
+  element?: ElementKind | null;
+  /** Daño extra de ese elemento. */
+  elementDamage?: number;
+  critChance?: number;
+  blockChance?: number;
+  /** >1 = más pesada (ralentiza); <1 = más ligera. */
+  weightMult?: number;
+  lifeRegenMult?: number;
+  energyRegenMult?: number;
+  /** Resistencias 0..1 (reducción). */
+  resistFire?: number;
+  resistIce?: number;
+  resistLightning?: number;
+  resistPoison?: number;
+  /** Proc chances 0..1 (se aplican en combate más adelante). */
+  chillChance?: number;
+  poisonChance?: number;
+  woundChance?: number;
+  immuneWounds?: boolean;
+  /** TODO futuro: freeze duration reduce, poison duration reduce. */
 };
 
 export type EquipSlotId =
@@ -325,6 +362,13 @@ export type ItemInstance = {
   /** Celdas de inventario (Diablo/MU) */
   gridW: number;
   gridH: number;
+  /** Easter egg: drop ultra-bajo aunque sea common/vulgar. */
+  easterEgg?: boolean;
+  /**
+   * Clave de único nombrado (mythic/legendary especiales).
+   * El cupo global vive en WorldState.uniqueDropCounts.
+   */
+  uniqueKey?: string;
 };
 
 /** Ítem colocado en la grilla de la mochila. */

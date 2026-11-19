@@ -1,4 +1,5 @@
-import { pickRarity, rarityMult, rngFromSeed } from "./rng";
+import { rollElement, withElementStats } from "./elements";
+import { fillRarityAdj, pickRarity, rarityMult, rarityT, rngFromSeed } from "./rng";
 import type { ItemInstance, ItemStats, Rarity, SwordParams } from "./types";
 
 export { rngFromSeed, pickRarity, rarityMult } from "./rng";
@@ -10,9 +11,9 @@ function rollMetalTone(r: () => number, rarity: Rarity): {
   metalLit: number;
 } {
   const tone = r();
-  // common: casi solo acero/hierro; epic: más chance de tinte
-  const tintChance =
-    rarity === "epic" ? 0.28 : rarity === "rare" ? 0.16 : rarity === "uncommon" ? 0.08 : 0.03;
+  const t = rarityT(rarity);
+  // vulgar: casi solo acero; mythic: más chance de tinte
+  const tintChance = 0.02 + t * 0.4;
 
   if (tone < 0.42) {
     // Acero frío gris-azulado
@@ -83,13 +84,13 @@ export function generateSwordParams(seed: number): SwordParams {
 
   const metal = rollMetalTone(r, rarity);
   const grip = rollGrip(r);
-  const ornamentBase =
-    rarity === "epic" ? 0.65 : rarity === "rare" ? 0.45 : rarity === "uncommon" ? 0.25 : 0.08;
+  const t = rarityT(rarity);
+  const ornamentBase = 0.05 + t * 0.75;
 
   return {
     seed,
     bladeType,
-    bladeLength: lengthBase * (rarity === "epic" ? 1.1 : 1),
+    bladeLength: lengthBase * (1 + t * 0.12),
     bladeWidth: widthBase,
     guardSpan: 0.18 + r() * 0.28,
     gripLength: 0.18 + r() * 0.16,
@@ -124,12 +125,19 @@ export function statsFromParams(params: SwordParams): ItemStats {
   };
 }
 
-const adjectives: Record<Rarity, string[]> = {
-  common: ["Oxidada", "Simple", "Tosca"],
-  uncommon: ["Afilada", "Firme", "Equilibrada"],
-  rare: ["Runada", "Noble", "Voraz"],
-  epic: ["Legendaria", "Tempestad", "Ancestral"],
-};
+const adjectives = fillRarityAdj(
+  ["Oxidada", "Simple", "Tosca"],
+  ["Afilada", "Firme", "Equilibrada"],
+  ["Runada", "Noble", "Voraz"],
+  ["Tempestad", "Ancestral", "Radiante"],
+  {
+    vulgar: ["Oxidada", "Mellada", "Torcida"],
+    regular: ["Servible", "Pulida", "Correcta"],
+    exceptional: ["Magistral", "Excelsa", "Voraz"],
+    legendary: ["Legendaria", "Eterna", "Soberana"],
+    mythic: ["Mítica", "Primordial", "Absoluta"],
+  },
+);
 
 const nouns = ["Hoja", "Espada", "Sable", "Tizona"];
 
@@ -147,13 +155,14 @@ export function nextItemId(seed: number): string {
 
 export function createSwordItem(seed: number): ItemInstance {
   const params = generateSwordParams(seed);
+  const r = rngFromSeed(seed ^ 0xe1e3);
   return {
     id: nextItemId(seed),
     kind: "sword",
     equipSlot: "weapon",
     seed,
     params,
-    stats: statsFromParams(params),
+    stats: withElementStats(statsFromParams(params), rollElement(r, params.rarity, true)),
     name: nameFromParams(params),
     gridW: params.bladeType === "wide" ? 2 : 1,
     gridH: 3,
@@ -177,7 +186,7 @@ export function createDaggerItem(seed: number): ItemInstance {
     ...metal,
     ...grip,
     guardStyle: rollGuard(r),
-    ornament: Math.min(1, (rarity === "epic" ? 0.5 : 0.15) + r() * 0.3),
+    ornament: Math.min(1, 0.08 + rarityT(rarity) * 0.7 + r() * 0.25),
     rarity,
   };
   const daggerNouns = ["Puñal", "Daga", "Estilete"];
@@ -188,7 +197,7 @@ export function createDaggerItem(seed: number): ItemInstance {
     equipSlot: "weapon",
     seed,
     params,
-    stats: statsFromParams(params),
+    stats: withElementStats(statsFromParams(params), rollElement(r, rarity, true)),
     name: `${adj[Math.floor(r() * adj.length)]} ${daggerNouns[Math.floor(r() * daggerNouns.length)]}`,
     gridW: 1,
     gridH: 2,

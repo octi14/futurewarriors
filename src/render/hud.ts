@@ -1,4 +1,5 @@
-import type { CoreStatId, EquipSlotId, ItemInstance } from "../shared/types";
+import { rarityT } from "../shared/rng";
+import type { CoreStatId, EquipSlotId, ItemInstance, Rarity } from "../shared/types";
 import type { WorldState } from "../sim/world";
 import {
   BAG_COLS,
@@ -9,6 +10,7 @@ import {
   getOffhandWeapon,
   statUpgradeCost,
 } from "../sim/world";
+import { rarityGlowStrength } from "./itemMesh";
 import { itemIconDataUrl, itemTooltipHtml } from "./itemIcon";
 
 export type ProjectFn = (worldX: number, worldZ: number, height: number) => {
@@ -18,21 +20,22 @@ export type ProjectFn = (worldX: number, worldZ: number, height: number) => {
 };
 
 function itemGlowVars(item: ItemInstance): string {
-  const rarity = (item.params as { rarity: string }).rarity;
+  const rarity = (item.params as { rarity: Rarity }).rarity;
   const hue =
     (item.params as { metalHue?: number; hue?: number; leatherHue?: number }).metalHue ??
     (item.params as { hue?: number }).hue ??
     (item.params as { leatherHue?: number }).leatherHue ??
     0.5;
-  const sat = rarity === "epic" ? 48 : rarity === "rare" ? 40 : rarity === "uncommon" ? 30 : 16;
-  const lit = rarity === "epic" ? 56 : rarity === "rare" ? 52 : rarity === "uncommon" ? 48 : 44;
-  const str = rarity === "epic" ? 0.55 : rarity === "rare" ? 0.32 : rarity === "uncommon" ? 0.16 : 0.06;
+  const t = rarityT(rarity);
+  const sat = 14 + t * 40;
+  const lit = 42 + t * 18;
+  const str = rarityGlowStrength(rarity);
   return `--glow: hsl(${Math.floor(hue * 360)} ${sat}% ${lit}%); --glow-str: ${str}`;
 }
 
 function iconImg(item: ItemInstance): string {
   const px = Math.max(96, Math.max(item.gridW, item.gridH) * 56);
-  const rarity = (item.params as { rarity: string }).rarity;
+  const rarity = (item.params as { rarity: Rarity }).rarity;
   return `<img class="item-icon rarity-${rarity}" style="${itemGlowVars(item)}" src="${itemIconDataUrl(item, px)}" alt="" draggable="false" />`;
 }
 

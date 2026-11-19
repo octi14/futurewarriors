@@ -1,17 +1,24 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
-import type { ItemInstance } from "../shared/types";
+import { ELEMENT_LABEL_ES } from "../shared/elements";
+import { RARITY_LABEL_ES } from "../shared/rng";
+import type { ItemInstance, Rarity } from "../shared/types";
 import { buildItemMesh, disposeObject3D } from "./itemMesh";
 
-const rarityNameColor: Record<string, string> = {
+const rarityNameColor: Record<Rarity, string> = {
+  vulgar: "#9a9080",
   common: "#d8c8a8",
+  regular: "#c6d4a8",
   uncommon: "#7dcc6a",
   rare: "#6a9aef",
-  epic: "#e8b84a",
+  exceptional: "#5ec8e8",
+  epic: "#c87bff",
+  legendary: "#e8b84a",
+  mythic: "#ff6b8a",
 };
 
-function rarityOf(item: ItemInstance): string {
-  return (item.params as { rarity: string }).rarity;
+function rarityOf(item: ItemInstance): Rarity {
+  return (item.params as { rarity: Rarity }).rarity;
 }
 
 const cache = new Map<string, string>();
@@ -124,14 +131,19 @@ export function itemTooltipHtml(item: ItemInstance): string {
   const nameColor = rarityNameColor[rarity] ?? rarityNameColor.common;
   const lines: string[] = [
     `<div class="tt-name" style="color:${nameColor}">${item.name}</div>`,
-    `<div class="tt-meta">${rarity} · ${item.kind} · ${item.equipSlot}</div>`,
+    `<div class="tt-meta">${RARITY_LABEL_ES[rarity] ?? rarity} · ${item.kind} · ${item.equipSlot}</div>`,
   ];
   if (s.damage) lines.push(`<div class="tt-stat">Daño <b>${s.damage}</b></div>`);
+  if (s.element && s.elementDamage)
+    lines.push(
+      `<div class="tt-stat">${ELEMENT_LABEL_ES[s.element]} <b>+${s.elementDamage}</b></div>`,
+    );
   if (s.reach) lines.push(`<div class="tt-stat">Alcance <b>${s.reach}</b></div>`);
   if (s.attackSpeed) lines.push(`<div class="tt-stat">Vel. ataque <b>${s.attackSpeed}</b></div>`);
   if (s.armor) lines.push(`<div class="tt-stat">Armadura <b>${s.armor}</b></div>`);
   if (s.moveSpeedMult !== 1)
     lines.push(`<div class="tt-stat">Vel. movimiento <b>×${s.moveSpeedMult}</b></div>`);
   if (s.maxHpBonus) lines.push(`<div class="tt-stat">HP máx. <b>+${s.maxHpBonus}</b></div>`);
+  if (item.easterEgg) lines.push(`<div class="tt-meta">Easter egg</div>`);
   return lines.join("");
 }

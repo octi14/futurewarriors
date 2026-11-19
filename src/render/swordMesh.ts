@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { rarityT } from "../shared/rng";
 import type { SwordParams } from "../shared/types";
 import { rarityGlowStrength } from "./itemMesh";
 
@@ -6,15 +7,14 @@ function swordMetalColor(params: SwordParams): THREE.Color {
   const sat = params.metalSat ?? 0.08;
   const lit = params.metalLit ?? 0.48;
   const c = new THREE.Color().setHSL(params.metalHue, sat, lit);
-  if (params.rarity === "rare") c.offsetHSL(0, 0.04, 0.03);
-  if (params.rarity === "epic") c.offsetHSL(0, 0.06, 0.04);
+  const t = rarityT(params.rarity);
+  if (t >= 0.5) c.offsetHSL(0, 0.03 + t * 0.03, 0.02 + t * 0.03);
   return c;
 }
 
 function makeSwordMetal(params: SwordParams, polish = 1): THREE.MeshStandardMaterial {
   const color = swordMetalColor(params);
-  const rough =
-    params.rarity === "epic" ? 0.12 : params.rarity === "rare" ? 0.18 : params.rarity === "uncommon" ? 0.28 : 0.38;
+  const rough = 0.4 - rarityT(params.rarity) * 0.3;
   // Metales oscuros más mates; bronces un poco más brillantes
   const lit = params.metalLit ?? 0.48;
   const sat = params.metalSat ?? 0.08;
@@ -244,7 +244,7 @@ export function buildSwordMesh(params: SwordParams): THREE.Group {
     group.add(ferrule);
   }
 
-  if (params.rarity === "rare" || params.rarity === "epic" || ornament > 0.7) {
+  if (rarityT(params.rarity) >= 0.5 || ornament > 0.7) {
     const gemHue = (params.metalHue + 0.35 + ornament * 0.2) % 1;
     const gemCol = new THREE.Color().setHSL(gemHue, 0.55, 0.48);
     const gem = new THREE.Mesh(

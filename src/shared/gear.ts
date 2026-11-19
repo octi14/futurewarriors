@@ -1,4 +1,6 @@
-import { pickRarity, rarityMult, rngFromSeed } from "./rng";
+import { rollElement, withElementStats } from "./elements";
+import { fillRarityAdj, pickRarity, rarityMult, rngFromSeed } from "./rng";
+import { EASTER_EGGS } from "./uniqueCatalog";
 import { createDaggerItem, createSwordItem, nextItemId, randomSwordSeed } from "./swords";
 import {
   ARMOR_VISUAL,
@@ -53,78 +55,93 @@ const emptyCombat = (): Pick<ItemStats, "damage" | "reach" | "attackSpeed" | "wi
   windup: 0,
 });
 
-const bootAdj: Record<Rarity, string[]> = {
-  common: ["Gastadas", "Rústicas", "Pesadas"],
-  uncommon: ["Ágiles", "Firmes", "Ligeras"],
-  rare: ["Veloces", "Sombra", "Caminantes"],
-  epic: ["Aladas", "Tempestad", "Errantes"],
-};
-const shieldAdj: Record<Rarity, string[]> = {
-  common: ["Rajado", "Tosco", "Viejo"],
-  uncommon: ["Firme", "Reforzado", "Sólido"],
-  rare: ["Baluarte", "Noble", "Runado"],
-  epic: ["Inquebrantable", "Égida", "Ancestral"],
-};
-const helmAdj: Record<Rarity, string[]> = {
-  common: ["Abollado", "Simple", "Oxidado"],
-  uncommon: ["Reforzado", "Ajustado", "Firme"],
-  rare: ["Barbuta", "Noble", "Runado"],
-  epic: ["Yelmo", "Corona", "Ancestral"],
-};
-const armorAdj: Record<Rarity, string[]> = {
-  common: ["Remendada", "Tosca", "Vieja", "Oxidada"],
-  uncommon: ["Acolchada", "Firme", "Curtida", "Anillada"],
-  rare: ["Reforzada", "Noble", "Runada", "Pulida"],
-  epic: ["Égida", "Tempestad", "Ancestral", "Imperial"],
-};
-const pantsAdj: Record<Rarity, string[]> = {
-  common: ["Rotos", "Simples", "Gastados"],
-  uncommon: ["Firmes", "Ajustados", "Curtidos"],
-  rare: ["Reforzados", "Nobles", "Runados"],
-  epic: ["Legendarios", "Égida", "Ancestrales"],
-};
-const gloveAdj: Record<Rarity, string[]> = {
-  common: ["Gastados", "Rústicos", "Finos"],
-  uncommon: ["Ágiles", "Firmes", "Curtidos"],
-  rare: ["Guanteletes", "Nobles", "Runados"],
-  epic: ["Tempestad", "Égida", "Ancestrales"],
-};
-const beltAdj: Record<Rarity, string[]> = {
-  common: ["Simple", "Gastado", "Tosco"],
-  uncommon: ["Firme", "Ancho", "Curtido"],
-  rare: ["Reforzado", "Noble", "Runado"],
-  epic: ["Cinto", "Égida", "Ancestral"],
-};
-const axeAdj: Record<Rarity, string[]> = {
-  common: ["Oxidada", "Tosca", "Pesada"],
-  uncommon: ["Afilada", "Firme", "Brutal"],
-  rare: ["Voraz", "Noble", "Runada"],
-  epic: ["Tempestad", "Ancestral", "Devastadora"],
-};
-const throwAdj: Record<Rarity, string[]> = {
-  common: ["Tosco", "Simple", "Oxidado"],
-  uncommon: ["Equilibrado", "Afilado", "Ligero"],
-  rare: ["Certero", "Noble", "Runado"],
-  epic: ["Tempestad", "Ancestral", "Letal"],
-};
-const bowAdj: Record<Rarity, string[]> = {
-  common: ["Tosco", "Simple", "Viejo"],
-  uncommon: ["Ágil", "Tenso", "Ligero"],
-  rare: ["Certero", "Noble", "Runado"],
-  epic: ["Tempestad", "Ancestral", "Letal"],
-};
-const crossbowAdj: Record<Rarity, string[]> = {
-  common: ["Tosca", "Simple", "Oxidada"],
-  uncommon: ["Firme", "Pesada", "Tensa"],
-  rare: ["Certera", "Noble", "Runada"],
-  epic: ["Tempestad", "Ancestral", "Letal"],
-};
+const bootAdj = fillRarityAdj(
+  ["Gastadas", "Rústicas", "Pesadas"],
+  ["Ágiles", "Firmes", "Ligeras"],
+  ["Veloces", "Sombra", "Caminantes"],
+  ["Aladas", "Tempestad", "Errantes"],
+  { legendary: ["Aladas", "Etéreas", "Errantes"], mythic: ["Celestes", "Infinitas", "Umbrales"] },
+);
+const shieldAdj = fillRarityAdj(
+  ["Rajado", "Tosco", "Viejo"],
+  ["Firme", "Reforzado", "Sólido"],
+  ["Baluarte", "Noble", "Runado"],
+  ["Inquebrantable", "Égida", "Ancestral"],
+  { legendary: ["Égida", "Bastión", "Eterno"], mythic: ["Cósmico", "Primordial", "Absoluto"] },
+);
+const helmAdj = fillRarityAdj(
+  ["Abollado", "Simple", "Oxidado"],
+  ["Reforzado", "Ajustado", "Firme"],
+  ["Barbuta", "Noble", "Runado"],
+  ["Yelmo", "Corona", "Ancestral"],
+  { legendary: ["Corona", "Diadema", "Soberano"], mythic: ["Tiara", "Oráculo", "Primordial"] },
+);
+const armorAdj = fillRarityAdj(
+  ["Remendada", "Tosca", "Vieja", "Oxidada"],
+  ["Acolchada", "Firme", "Curtida", "Anillada"],
+  ["Reforzada", "Noble", "Runada", "Pulida"],
+  ["Égida", "Tempestad", "Ancestral", "Imperial"],
+  { legendary: ["Imperial", "Sagrada", "Eterna"], mythic: ["Primordial", "Cósmica", "Absoluta"] },
+);
+const pantsAdj = fillRarityAdj(
+  ["Rotos", "Simples", "Gastados"],
+  ["Firmes", "Ajustados", "Curtidos"],
+  ["Reforzados", "Nobles", "Runados"],
+  ["Legendarios", "Égida", "Ancestrales"],
+  { legendary: ["Égida", "Eternos", "Sagrados"], mythic: ["Primordiales", "Cósmicos", "Absolutos"] },
+);
+const gloveAdj = fillRarityAdj(
+  ["Gastados", "Rústicos", "Finos"],
+  ["Ágiles", "Firmes", "Curtidos"],
+  ["Guanteletes", "Nobles", "Runados"],
+  ["Tempestad", "Égida", "Ancestrales"],
+  { legendary: ["Égida", "Soberanos", "Eternos"], mythic: ["Primordiales", "Cósmicos", "Absolutos"] },
+);
+const beltAdj = fillRarityAdj(
+  ["Simple", "Gastado", "Tosco"],
+  ["Firme", "Ancho", "Curtido"],
+  ["Reforzado", "Noble", "Runado"],
+  ["Cinto", "Égida", "Ancestral"],
+  { legendary: ["Égida", "Soberano", "Eterno"], mythic: ["Primordial", "Cósmico", "Absoluto"] },
+);
+const axeAdj = fillRarityAdj(
+  ["Oxidada", "Tosca", "Pesada"],
+  ["Afilada", "Firme", "Brutal"],
+  ["Voraz", "Noble", "Runada"],
+  ["Tempestad", "Ancestral", "Devastadora"],
+  { legendary: ["Devastadora", "Titánica", "Eterna"], mythic: ["Primordial", "Cósmica", "Absoluta"] },
+);
+const throwAdj = fillRarityAdj(
+  ["Tosco", "Simple", "Oxidado"],
+  ["Equilibrado", "Afilado", "Ligero"],
+  ["Certero", "Noble", "Runado"],
+  ["Tempestad", "Ancestral", "Letal"],
+  { legendary: ["Letal", "Eterno", "Sombra"], mythic: ["Primordial", "Cósmico", "Absoluto"] },
+);
+const bowAdj = fillRarityAdj(
+  ["Tosco", "Simple", "Viejo"],
+  ["Ágil", "Tenso", "Ligero"],
+  ["Certero", "Noble", "Runado"],
+  ["Tempestad", "Ancestral", "Letal"],
+  { legendary: ["Eterno", "Sagitario", "Lunar"], mythic: ["Primordial", "Cósmico", "Absoluto"] },
+);
+const crossbowAdj = fillRarityAdj(
+  ["Tosca", "Simple", "Oxidada"],
+  ["Firme", "Pesada", "Tensa"],
+  ["Certera", "Noble", "Runada"],
+  ["Tempestad", "Ancestral", "Letal"],
+  { legendary: ["Eterna", "Asedio", "Titánica"], mythic: ["Primordial", "Cósmica", "Absoluta"] },
+);
 
 export function createBootsItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
-  const genre = pickStyle(r, BOOT_VISUAL);
+  // Crocs: calzado más común y de peor calidad (no easter egg).
+  const genre: BootsParams["style"] = r() < 0.42 ? "crocs" : pickStyle(r, BOOT_VISUAL);
   const style = bootVisual(genre);
+  let rarity = pickRarity(r);
+  if (genre === "crocs") {
+    rarity = r() < 0.72 ? "vulgar" : "common";
+  }
   const metalRoll = r();
   const metalTone: BootsParams["metalTone"] =
     style === "plate" || style === "greaves"
@@ -139,15 +156,23 @@ export function createBootsItem(seed: number): ItemInstance {
     style: genre,
     metalTone,
     height:
-      style === "greaves" || style === "trail" || style === "combat"
+      style === "greaves" || style === "trail" || style === "combat" || style === "riding" || style === "ski"
         ? 0.34 + r() * 0.2
-        : style === "military"
+        : style === "military" || style === "dress" || style === "work"
           ? 0.26 + r() * 0.12
-          : style === "sport"
-            ? 0.18 + r() * 0.08
-            : 0.16 + r() * 0.08,
+          : style === "crocs" || style === "sandal"
+            ? 0.12 + r() * 0.05
+            : style === "sport" || style === "sneaker"
+              ? 0.18 + r() * 0.08
+              : 0.16 + r() * 0.08,
     sole:
-      style === "sport" ? 0.06 + r() * 0.05 : style === "canvas" ? 0.04 + r() * 0.03 : 0.045 + r() * 0.05,
+      style === "crocs"
+        ? 0.07 + r() * 0.04
+        : style === "sport" || style === "sneaker"
+          ? 0.06 + r() * 0.05
+          : style === "canvas" || style === "sandal"
+            ? 0.04 + r() * 0.03
+            : 0.045 + r() * 0.05,
     // Lona: negro / rojo Chuck / navy (como las refs)
     leatherHue:
       style === "canvas"
@@ -163,13 +188,15 @@ export function createBootsItem(seed: number): ItemInstance {
   };
   const m = rarityMult(rarity);
   const speed =
-    style === "canvas" || style === "sport"
-      ? 1.1 + r() * 0.12
-      : style === "combat" || style === "military"
-        ? 1.05 + r() * 0.08
-        : style === "trail"
-          ? 1.08 + r() * 0.1
-          : 1.02 + r() * 0.06;
+    genre === "crocs"
+      ? 0.92 + r() * 0.04
+      : style === "canvas" || style === "sport"
+        ? 1.1 + r() * 0.12
+        : style === "combat" || style === "military"
+          ? 1.05 + r() * 0.08
+          : style === "trail"
+            ? 1.08 + r() * 0.1
+            : 1.02 + r() * 0.06;
   const extraNouns: Partial<Record<BootsParams["style"], string[]>> = {
     sneaker: ["Sneakers", "Zapatillas urbanas"],
     sandal: ["Sandalias", "Ojotas"],
@@ -179,6 +206,7 @@ export function createBootsItem(seed: number): ItemInstance {
     dress: ["Botines", "Botas de gala"],
     work: ["Botas de trabajo", "Botas de obra"],
     ski: ["Botas de nieve", "Botas de ski"],
+    crocs: ["Zuecos", "Crocs", "Chanclas de goma"],
   };
   const nouns =
     extraNouns[genre] ??
@@ -717,15 +745,18 @@ export function createAxeItem(seed: number, small = false): ItemInstance {
     equipSlot: "weapon",
     seed,
     params,
-    stats: {
-      damage: Math.round(dmg * m * 10) / 10,
-      reach: Math.round(reach * 100) / 100,
-      attackSpeed: Math.round(spd * 100) / 100,
-      windup: Math.round((0.12 + params.headSize * (small ? 0.6 : 1)) * 100) / 100,
-      armor: 0,
-      moveSpeedMult: 1,
-      maxHpBonus: 0,
-    },
+    stats: withElementStats(
+      {
+        damage: Math.round(dmg * m * 10) / 10,
+        reach: Math.round(reach * 100) / 100,
+        attackSpeed: Math.round(spd * 100) / 100,
+        windup: Math.round((0.12 + params.headSize * (small ? 0.6 : 1)) * 100) / 100,
+        armor: 0,
+        moveSpeedMult: 1,
+        maxHpBonus: 0,
+      },
+      rollElement(r, rarity, true),
+    ),
     name: pickName(
       seed,
       rarity,
@@ -813,15 +844,18 @@ export function createThrowItem(seed: number): ItemInstance {
     equipSlot: "weapon",
     seed,
     params,
-    stats: {
-      damage: Math.round(damage * 10) / 10,
-      reach: Math.round(reach * 100) / 100,
-      attackSpeed: Math.round(attackSpeed * 100) / 100,
-      windup: Math.round((0.1 + (1.2 - attackSpeed) * 0.08) * 100) / 100,
-      armor: 0,
-      moveSpeedMult: 1,
-      maxHpBonus: 0,
-    },
+    stats: withElementStats(
+      {
+        damage: Math.round(damage * 10) / 10,
+        reach: Math.round(reach * 100) / 100,
+        attackSpeed: Math.round(attackSpeed * 100) / 100,
+        windup: Math.round((0.1 + (1.2 - attackSpeed) * 0.08) * 100) / 100,
+        armor: 0,
+        moveSpeedMult: 1,
+        maxHpBonus: 0,
+      },
+      rollElement(r, rarity, true),
+    ),
     name: pickName(seed, rarity, throwAdj, nouns),
     gridW,
     gridH,
@@ -848,15 +882,18 @@ export function createBowItem(seed: number): ItemInstance {
     equipSlot: "weapon",
     seed,
     params,
-    stats: {
-      damage: Math.round(damage * 10) / 10,
-      reach: Math.round(reach * 100) / 100,
-      attackSpeed: Math.round(attackSpeed * 100) / 100,
-      windup: Math.round((0.16 + params.draw * 0.12) * 100) / 100,
-      armor: 0,
-      moveSpeedMult: 1,
-      maxHpBonus: 0,
-    },
+    stats: withElementStats(
+      {
+        damage: Math.round(damage * 10) / 10,
+        reach: Math.round(reach * 100) / 100,
+        attackSpeed: Math.round(attackSpeed * 100) / 100,
+        windup: Math.round((0.16 + params.draw * 0.12) * 100) / 100,
+        armor: 0,
+        moveSpeedMult: 1,
+        maxHpBonus: 0,
+      },
+      rollElement(r, rarity, true),
+    ),
     name: pickName(seed, rarity, bowAdj, ["Arco", "Arco largo", "Arco de caza"]),
     gridW: 1,
     gridH: 4,
@@ -883,27 +920,31 @@ export function createCrossbowItem(seed: number): ItemInstance {
     equipSlot: "weapon",
     seed,
     params,
-    stats: {
-      damage: Math.round(damage * 10) / 10,
-      reach: Math.round(reach * 100) / 100,
-      attackSpeed: Math.round(attackSpeed * 100) / 100,
-      windup: Math.round((0.22 + params.power * 0.15) * 100) / 100,
-      armor: 0,
-      moveSpeedMult: 0.98,
-      maxHpBonus: 0,
-    },
+    stats: withElementStats(
+      {
+        damage: Math.round(damage * 10) / 10,
+        reach: Math.round(reach * 100) / 100,
+        attackSpeed: Math.round(attackSpeed * 100) / 100,
+        windup: Math.round((0.22 + params.power * 0.15) * 100) / 100,
+        armor: 0,
+        moveSpeedMult: 0.98,
+        maxHpBonus: 0,
+      },
+      rollElement(r, rarity, true),
+    ),
     name: pickName(seed, rarity, crossbowAdj, ["Ballesta", "Ballesta pesada", "Ballesta de asedio"]),
     gridW: 2,
     gridH: 2,
   };
 }
 
-const ringAdj: Record<Rarity, string[]> = {
-  common: ["Simple", "Opaco", "Gastado"],
-  uncommon: ["Pulido", "Fino", "Grabado"],
-  rare: ["Rúnico", "Noble", "Sellado"],
-  epic: ["Ancestral", "Estelar", "Maldito"],
-};
+const ringAdj = fillRarityAdj(
+  ["Simple", "Opaco", "Gastado"],
+  ["Pulido", "Fino", "Grabado"],
+  ["Rúnico", "Noble", "Sellado"],
+  ["Ancestral", "Estelar", "Maldito"],
+  { legendary: ["Estelar", "Eterno", "Arcano"], mythic: ["Primordial", "Cósmico", "Absoluto"] },
+);
 
 export function createRingItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
@@ -930,14 +971,17 @@ export function createRingItem(seed: number): ItemInstance {
     equipSlot: "ring1",
     seed,
     params,
-    stats: {
-      ...emptyCombat(),
-      damage: style === "skull" ? Math.round(0.4 * m * 10) / 10 : 0,
-      armor: style === "band" || style === "braided" ? Math.round(0.4 * m * 10) / 10 : 0,
-      attackSpeed: style === "signet" ? 1.04 : 1,
-      moveSpeedMult: 1,
-      maxHpBonus: gem === "none" ? Math.round(4 * m) : Math.round(10 * m),
-    },
+    stats: withElementStats(
+      {
+        ...emptyCombat(),
+        damage: style === "skull" ? Math.round(0.4 * m * 10) / 10 : 0,
+        armor: style === "band" || style === "braided" ? Math.round(0.4 * m * 10) / 10 : 0,
+        attackSpeed: style === "signet" ? 1.04 : 1,
+        moveSpeedMult: 1,
+        maxHpBonus: gem === "none" ? Math.round(4 * m) : Math.round(10 * m),
+      },
+      rollElement(r, rarity, false),
+    ),
     name: pickName(seed, rarity, ringAdj, nouns),
     gridW: 1,
     gridH: 1,
@@ -967,19 +1011,61 @@ export function createAmuletItem(seed: number): ItemInstance {
     equipSlot: "amulet",
     seed,
     params,
-    stats: {
-      ...emptyCombat(),
-      armor: style === "medallion" ? Math.round(0.6 * m * 10) / 10 : 0,
-      moveSpeedMult: 1,
-      maxHpBonus: Math.round((12 + (style === "relic" ? 10 : 0)) * m),
-    },
+    stats: withElementStats(
+      {
+        ...emptyCombat(),
+        armor: style === "medallion" ? Math.round(0.6 * m * 10) / 10 : 0,
+        moveSpeedMult: 1,
+        maxHpBonus: Math.round((12 + (style === "relic" ? 10 : 0)) * m),
+      },
+      rollElement(r, rarity, false),
+    ),
     name: pickName(seed, rarity, ringAdj, nouns),
     gridW: 1,
     gridH: 1,
   };
 }
 
+function tryEasterEggLoot(): ItemInstance | null {
+  const n = Math.random();
+  let acc = 0;
+  for (const egg of EASTER_EGGS) {
+    acc += egg.weight;
+    if (n >= acc) continue;
+    const seed = randomSwordSeed();
+    let item: ItemInstance;
+    if (egg.kind === "helmet") {
+      item = createHelmetItem(seed);
+      (item.params as HelmetParams).style = egg.style as HelmetParams["style"];
+      (item.params as HelmetParams).rarity = egg.rarity;
+    } else if (egg.kind === "boots") {
+      item = createBootsItem(seed);
+      (item.params as BootsParams).style = egg.style as BootsParams["style"];
+      (item.params as BootsParams).rarity = egg.rarity;
+    } else if (egg.kind === "armor") {
+      item = createArmorItem(seed);
+      (item.params as ArmorParams).style = egg.style as ArmorParams["style"];
+      (item.params as ArmorParams).rarity = egg.rarity;
+    } else if (egg.kind === "pants") {
+      item = createPantsItem(seed);
+      (item.params as PantsParams).style = egg.style as PantsParams["style"];
+      (item.params as PantsParams).rarity = egg.rarity;
+    } else {
+      item = createGlovesItem(seed);
+      (item.params as GlovesParams).style = egg.style as GlovesParams["style"];
+      (item.params as GlovesParams).rarity = egg.rarity;
+    }
+    item.name = egg.name;
+    item.easterEgg = true;
+    item.uniqueKey = egg.key;
+    return item;
+  }
+  return null;
+}
+
 export function createRandomLootItem(): ItemInstance {
+  const egg = tryEasterEggLoot();
+  if (egg) return egg;
   const seed = randomSwordSeed();
   const roll = Math.random();
   if (roll < 0.1) return createSwordItem(seed);

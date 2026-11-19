@@ -1,3 +1,4 @@
+import { aggregateCombatElements } from "../shared/elements";
 import { createRandomLootItem, isDualWieldable } from "../shared/gear";
 import { createSwordItem } from "../shared/swords";
 import { getBagItem, removeBagItem, tryPlaceItem } from "./bag";
@@ -11,6 +12,7 @@ import type {
   CoreStatId,
   CoreStats,
   DamagePopup,
+  ElementKind,
   Equipment,
   EquipSlotId,
   ItemInstance,
@@ -140,6 +142,8 @@ export type WorldState = {
   /** Golpe especial activo (atacar corriendo con energía) */
   chargeAttack: boolean;
   chargeKind: ChargeKind;
+  /** Cupos de únicos nombrados (mythic/legendary especiales). */
+  uniqueDropCounts: Record<string, number>;
 };
 
 function vec(x: number, y: number): Vec2 {
@@ -286,6 +290,7 @@ export function createWorld(config: WorldConfig = { mapSize: 180, aiCount: 8, bu
     aiSpawnTimer: AI_RESPAWN_INTERVAL,
     chargeAttack: false,
     chargeKind: "none",
+    uniqueDropCounts: {},
   };
 }
 
@@ -307,6 +312,8 @@ function emptyWeaponStats(): ItemStats {
     armor: 0,
     moveSpeedMult: 1,
     maxHpBonus: 0,
+    element: null,
+    elementDamage: 0,
   };
 }
 
@@ -322,6 +329,23 @@ export function getCombatWeaponStats(world: WorldState): ItemStats {
     reach: Math.max(base.reach, off.stats.reach),
     attackSpeed: Math.round(Math.max(base.attackSpeed, off.stats.attackSpeed) * 1.08 * 100) / 100,
     windup: Math.min(base.windup, off.stats.windup),
+  };
+}
+
+/** Daño total del golpe (físico + elemental de arma + gear). */
+export function getHitDamageBreakdown(world: WorldState): {
+  physical: number;
+  elemental: number;
+  trailElement: ElementKind | null;
+} {
+  const main = getEquipped(world);
+  const gear = Object.values(world.equipment);
+  const agg = aggregateCombatElements(main, gear);
+  const physical = getCombatWeaponStats(world).damage;
+  return {
+    physical,
+    elemental: agg.totalElementDamage,
+    trailElement: agg.trailElement,
   };
 }
 
@@ -624,6 +648,7 @@ function spawnPlayerProjectile(world: WorldState, weapon: ItemInstance, charged:
 
   const dmgMult = charged ? (weapon.kind === "crossbow" ? 2.1 : weapon.kind === "bow" ? 1.7 : 1.6) : 1;
   const life = range / speed;
+  const elem = aggregateCombatElements(weapon, Object.values(world.equipment)).totalElementDamage;
   world.projectiles.push({
     id: nextId("proj"),
     pos: { x: player.pos.x + dir.x * 0.55, y: player.pos.y + dir.y * 0.55 },
@@ -631,7 +656,7 @@ function spawnPlayerProjectile(world: WorldState, weapon: ItemInstance, charged:
     dirY: dir.y,
     speed,
     life,
-    damage: outgoingDamage(player, stats.damage) * dmgMult,
+    damage: outgoingDamage(player, stats.damage + elem) * dmgMult,
     radius,
     spin: 0,
     spinRate,
@@ -941,8 +966,12 @@ function resolveSlashHit(world: WorldState): void {
     const d = dist(player.pos, ai.pos);
     if (d < nearestD) nearestD = d;
     if (d > reach) continue;
-    dealDamage(world, ai, outgoingDamage(player, stats.damage) * dmgMult);
-    if (offWeapon) dealDamage(world, ai, outgoingDamage(player, offWeapon.stats.damage) * dmgMult);
+    {
+      const hit = getHitDamageBreakdown(world);
+      dealDamage(world, ai, outgoingDamage(player, hit.physical + hit.elemental) * dmgMult);
+      if (offWeapon)
+        dealDamage(world, ai, outgoingDamage(player, offWeapon.stats.damage) * dmgMult);
+    }
     let kdx = ai.pos.x - player.pos.x;
     let kdy = ai.pos.y - player.pos.y;
     if (kind === "arc") {

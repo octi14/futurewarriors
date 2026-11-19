@@ -1,6 +1,12 @@
 import * as THREE from "three";
-import { armorVisual, bootVisual, gloveVisual, pantsVisual } from "../shared/presets";
+import {
+  armorVisual,
+  bootHeightClass,
+  gloveVisual,
+  pantsVisual,
+} from "../shared/presets";
 import type { ArmorParams, BootsParams, GlovesParams, PantsParams } from "../shared/types";
+import { rarityT } from "../shared/rng";
 import { applyItemGlow, metalColor } from "./itemMesh";
 
 const ARMOR_BONES = new Set([
@@ -331,32 +337,51 @@ function rarityGlow(m: THREE.MeshStandardMaterial, rarity: ArmorParams["rarity"]
 function softArmorMat(params: ArmorParams): THREE.MeshStandardMaterial {
   const { style, finish, hue, rarity, seed } = params;
   const r = rng(seed);
-  let pattern: PatternKind =
-    style === "padded" || style === "hoodie"
-      ? style === "hoodie"
-        ? "cloth"
-        : "quilt"
-      : style === "jacket"
+  const clothish =
+    style === "hoodie" ||
+    style === "shirt" ||
+    style === "tunic" ||
+    style === "poncho" ||
+    style === "tabard";
+  const jacketish = style === "jacket" || style === "coat" || style === "duster";
+  const quiltish = style === "padded" || style === "gambeson";
+  const chainish = style === "chain" || style === "hauberk";
+  const scaleish = style === "scale" || style === "lamellar";
+  const plateish = style === "plate" || style === "cuirass";
+  const brig = style === "brigandine";
+
+  let pattern: PatternKind = clothish
+    ? "cloth"
+    : quiltish
+      ? "quilt"
+      : jacketish || style === "leather"
         ? "leather"
-        : style === "vest"
+        : style === "vest" || brig
           ? "rivet"
-          : style === "chain"
+          : chainish
             ? "chain"
-            : style === "scale"
+            : scaleish
               ? "scale"
-              : style === "plate"
+              : plateish
                 ? "metal"
                 : "leather";
-  if (style === "leather" && r() > 0.55) pattern = "rivet";
+  if ((style === "leather" || brig) && r() > 0.55) pattern = "rivet";
 
   let color: THREE.Color;
   let metalness = 0.05;
   let roughness = 0.85;
-  if (style === "hoodie" || style === "jacket" || style === "leather" || style === "padded") {
+  if (clothish || jacketish || style === "leather" || quiltish) {
+    const brightCloth = style === "tunic" || style === "tabard" || style === "shirt";
     color = new THREE.Color().setHSL(
-      style === "hoodie" ? hue : 0.06 + hue * 0.14,
-      style === "hoodie" ? 0.35 + r() * 0.25 : 0.28 + r() * 0.2,
-      finish === "darkened" ? 0.18 + r() * 0.08 : style === "hoodie" ? 0.36 + r() * 0.16 : 0.32 + r() * 0.14,
+      clothish ? hue : 0.06 + hue * 0.14,
+      clothish ? 0.35 + r() * 0.25 : 0.28 + r() * 0.2,
+      finish === "darkened"
+        ? 0.18 + r() * 0.08
+        : brightCloth
+          ? 0.4 + r() * 0.12
+          : clothish
+            ? 0.36 + r() * 0.16
+            : 0.32 + r() * 0.14,
     );
     metalness = 0.02;
     roughness = 0.88 + r() * 0.08;
@@ -366,7 +391,7 @@ function softArmorMat(params: ArmorParams): THREE.MeshStandardMaterial {
     roughness = 0.78;
     pattern = "rivet";
   } else if (finish === "bare") {
-    color = new THREE.Color().setHSL(0.58, rarity === "epic" ? 0.1 : 0.03, 0.45 + r() * 0.12);
+    color = new THREE.Color().setHSL(0.58, 0.03 + rarityT(rarity) * 0.1, 0.45 + r() * 0.12);
     metalness = 0.78;
     roughness = 0.38 + r() * 0.12;
   } else if (finish === "darkened") {
@@ -379,7 +404,7 @@ function softArmorMat(params: ArmorParams): THREE.MeshStandardMaterial {
     roughness = 0.22 + r() * 0.1;
   } else {
     color = metalColor(hue, rarity);
-    metalness = style === "chain" ? 0.7 : 0.58;
+    metalness = chainish ? 0.7 : 0.58;
     roughness = 0.36 + r() * 0.12;
   }
 
@@ -553,8 +578,34 @@ function softBootMat(params: BootsParams, layer: "base" | "plate" = "base"): THR
     rarityGlow(m, params.rarity);
     return m;
   }
+  if (params.style === "crocs") {
+    // EVA foam mate, colores vivos de casa
+    const foam = new THREE.Color().setHSL(
+      params.leatherHue < 0.15
+        ? 0.02
+        : params.leatherHue < 0.4
+          ? 0.55
+          : params.leatherHue < 0.7
+            ? 0.12
+            : 0.33,
+      0.55 + r() * 0.25,
+      0.42 + r() * 0.12,
+    );
+    return withPolyOffset(
+      new THREE.MeshStandardMaterial({
+        color: foam,
+        roughness: 0.98,
+        metalness: 0,
+        side: THREE.DoubleSide,
+      }),
+    );
+  }
   const kind: PatternKind =
-    params.style === "canvas" || params.style === "sport" ? "cloth" : params.style === "combat" ? "lace" : "leather";
+    params.style === "canvas" || params.style === "sport" || params.style === "sneaker"
+      ? "cloth"
+      : params.style === "combat" || params.style === "work"
+        ? "lace"
+        : "leather";
   const map = patternTex(kind, params.seed, params.leatherHue);
   map.repeat.set(2 + r(), 2 + r());
   const c =
@@ -566,16 +617,27 @@ function softBootMat(params: BootsParams, layer: "base" | "plate" = "base"): THR
           : params.leatherHue > 0.5 && params.leatherHue < 0.7
             ? new THREE.Color().setHSL(0.6, 0.42, 0.2)
             : new THREE.Color().setHSL(params.leatherHue, 0.48, 0.2)
-      : new THREE.Color().setHSL(
-          0.06 + params.leatherHue * 0.1,
-          0.32,
-          params.style === "trail" || params.style === "combat" ? 0.22 : 0.34,
-        );
+      : params.style === "sandal"
+        ? new THREE.Color().setHSL(0.08 + params.leatherHue * 0.06, 0.4, 0.38)
+        : params.style === "oxford" || params.style === "loafer" || params.style === "dress"
+          ? new THREE.Color().setHSL(0.05 + params.leatherHue * 0.05, 0.35, 0.16)
+          : new THREE.Color().setHSL(
+              0.06 + params.leatherHue * 0.1,
+              0.32,
+              params.style === "trail" || params.style === "combat" || params.style === "ski"
+                ? 0.22
+                : 0.34,
+            );
   return withPolyOffset(
     new THREE.MeshStandardMaterial({
       color: c,
       map,
-      roughness: params.style === "canvas" ? 0.94 : 0.9,
+      roughness:
+        params.style === "canvas"
+          ? 0.94
+          : params.style === "oxford" || params.style === "dress"
+            ? 0.55
+            : 0.9,
       metalness: 0.03,
       side: THREE.DoubleSide,
     }),
@@ -584,6 +646,32 @@ function softBootMat(params: BootsParams, layer: "base" | "plate" = "base"): THR
 
 function softGloveMat(params: GlovesParams): THREE.MeshStandardMaterial {
   const r = rng(params.seed);
+  if (params.style === "bracers") {
+    const map = patternTex("rivet", params.seed, params.hue);
+    return withPolyOffset(
+      new THREE.MeshStandardMaterial({
+        color: metalColor(params.hue, params.rarity),
+        map,
+        metalness: 0.55,
+        roughness: 0.4,
+        side: THREE.DoubleSide,
+      }),
+    );
+  }
+  if (params.style === "mittens" || params.style === "wraps") {
+    return withPolyOffset(
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color().setHSL(
+          params.style === "wraps" ? 0.08 : params.hue,
+          params.style === "wraps" ? 0.35 : 0.25,
+          params.style === "mittens" ? 0.55 : 0.32,
+        ),
+        roughness: 0.95,
+        metalness: 0,
+        side: THREE.DoubleSide,
+      }),
+    );
+  }
   if (params.style === "gauntlet") {
     const map = patternTex(r() > 0.5 ? "metal" : "rivet", params.seed, params.hue);
     map.repeat.set(2, 2);
@@ -634,6 +722,48 @@ function softPantsMat(params: PantsParams): THREE.MeshStandardMaterial {
     );
     rarityGlow(m, params.rarity);
     return m;
+  }
+  if (params.style === "shorts") {
+    return withPolyOffset(
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color().setHSL(params.hue, 0.35, 0.4),
+        roughness: 0.9,
+        metalness: 0.02,
+        side: THREE.DoubleSide,
+      }),
+    );
+  }
+  if (params.style === "kilt") {
+    return withPolyOffset(
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color().setHSL(params.hue, 0.45, 0.32),
+        roughness: 0.92,
+        metalness: 0,
+        side: THREE.DoubleSide,
+      }),
+    );
+  }
+  if (params.style === "chaps" || params.style === "breeches") {
+    return withPolyOffset(
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color().setHSL(0.07, 0.4, 0.22),
+        roughness: 0.85,
+        metalness: 0.05,
+        side: THREE.DoubleSide,
+      }),
+    );
+  }
+  if (params.style === "fatigues") {
+    const map = patternTex("camo", params.seed, params.hue);
+    return withPolyOffset(
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color().setHSL(0.22, 0.35, 0.28),
+        map,
+        roughness: 0.92,
+        metalness: 0.02,
+        side: THREE.DoubleSide,
+      }),
+    );
   }
   if (params.style === "jeans") {
     const map = patternTex("denim", params.seed, params.hue);
@@ -1317,8 +1447,11 @@ function footWrapOptsFor(params: BootsParams): FootWrapOpts {
   if (s === "greaves" || s === "plate") {
     return { liftFrac: 0.08, pitch: -0.28 };
   }
-  if (s === "sport") {
+  if (s === "sport" || s === "sneaker" || s === "loafer" || s === "oxford") {
     return { liftFrac: 0.05, pitch: -0.2 };
+  }
+  if (s === "crocs" || s === "sandal") {
+    return { liftFrac: 0.02, pitch: -0.1 };
   }
   return { liftFrac: 0, pitch: 0 };
 }
@@ -1328,17 +1461,20 @@ type BootClosure = "laces" | "instepStrap" | "velcro" | "wings" | "slipon" | "bu
 /** Cierre/ornamento según estilo + seed (diversidad). */
 function pickBootClosure(params: BootsParams): BootClosure {
   const r = rng(params.seed + 404);
-  if (params.style === "greaves") return "buckle";
-  if (params.style === "plate") return r() < 0.5 ? "buckle" : "laces";
-  if (params.style === "canvas") return "laces"; // Chuck/lona siempre cordones
-  if (params.style === "sport") {
+  const s = params.style;
+  if (s === "greaves" || s === "riding") return "buckle";
+  if (s === "plate") return r() < 0.5 ? "buckle" : "laces";
+  if (s === "canvas") return "laces";
+  if (s === "crocs" || s === "sandal" || s === "loafer") return "slipon";
+  if (s === "oxford" || s === "dress") return "laces";
+  if (s === "sport" || s === "sneaker") {
     const v = r();
     if (v < 0.55) return "laces";
     if (v < 0.7) return "velcro";
     if (v < 0.85) return "instepStrap";
     return "wings";
   }
-  if (params.style === "combat" || params.style === "military" || params.style === "trail") {
+  if (s === "combat" || s === "military" || s === "trail" || s === "work" || s === "ski") {
     const v = r();
     if (v < 0.7) return "laces";
     if (v < 0.85) return "velcro";
@@ -1381,6 +1517,102 @@ function bootToeCapMat(params: BootsParams): THREE.MeshStandardMaterial | null {
     return m;
   }
   return null;
+}
+
+/**
+ * Crocs: clog de foam, orificios de ventilación, correa de talón (casa, no deporte).
+ * Espacio Foot*: +Z arriba, +Y puntera.
+ */
+function buildCrocsDetailsOnFootFit(params: BootsParams, fit: FootShellFit): THREE.Group {
+  const g = new THREE.Group();
+  g.name = "boot-details-crocs-fit";
+  const { min, max, center, size } = fit;
+  const w = size.x;
+  const len = size.y;
+  const h = size.z;
+  const foam = softBootMat(params);
+  const dark = foam.clone();
+  dark.color.offsetHSL(0, 0, -0.12);
+
+  // Suela gruesa tipo clog
+  const soleH = Math.max(0.018, Math.min(0.045, h * 0.32 + params.sole * 0.1));
+  const sole = new THREE.Mesh(new THREE.BoxGeometry(w * 1.12, len * 1.08, soleH), foam);
+  sole.position.set(center.x, center.y, min.z - soleH * 0.35);
+  g.add(sole);
+  // Tacos bajos irregulares
+  for (let i = 0; i < 5; i++) {
+    const nubble = new THREE.Mesh(new THREE.CylinderGeometry(w * 0.06, w * 0.07, soleH * 0.4, 6), dark);
+    nubble.rotation.x = Math.PI / 2;
+    nubble.position.set(
+      center.x + ((i % 3) - 1) * w * 0.28,
+      center.y - len * 0.25 + Math.floor(i / 3) * len * 0.45,
+      min.z - soleH * 0.55,
+    );
+    g.add(nubble);
+  }
+
+  // Empeine cerrado (clog) — no cordones
+  const vamp = new THREE.Mesh(new THREE.BoxGeometry(w * 0.95, len * 0.55, h * 0.55), foam);
+  vamp.position.set(center.x, center.y + len * 0.12, center.z + h * 0.05);
+  g.add(vamp);
+
+  // Orificios de ventilación (círculos en el empeine)
+  const holeMat = new THREE.MeshStandardMaterial({
+    color: 0x1a1a1a,
+    roughness: 1,
+    metalness: 0,
+  });
+  for (let row = 0; row < 2; row++) {
+    for (let col = 0; col < 4; col++) {
+      const hole = new THREE.Mesh(new THREE.CylinderGeometry(w * 0.045, w * 0.045, h * 0.08, 8), holeMat);
+      hole.rotation.x = Math.PI / 2;
+      hole.position.set(
+        center.x - w * 0.28 + col * w * 0.18,
+        center.y + len * 0.02 + row * len * 0.14,
+        max.z + h * 0.02,
+      );
+      g.add(hole);
+    }
+  }
+
+  // Correa de talón (pivot atrás)
+  const strap = new THREE.Mesh(new THREE.TorusGeometry(w * 0.38, h * 0.06, 6, 12, Math.PI * 1.15), foam);
+  strap.rotation.y = Math.PI / 2;
+  strap.position.set(center.x, center.y - len * 0.38, center.z + h * 0.15);
+  g.add(strap);
+  const pivot = new THREE.Mesh(new THREE.SphereGeometry(w * 0.06, 6, 6), dark);
+  pivot.position.set(center.x + w * 0.42, center.y - len * 0.28, center.z + h * 0.1);
+  g.add(pivot);
+  const pivot2 = pivot.clone();
+  pivot2.position.x = center.x - w * 0.42;
+  g.add(pivot2);
+
+  return g;
+}
+
+/** Sandalia abierta: suela + tiras. */
+function buildSandalDetailsOnFootFit(params: BootsParams, fit: FootShellFit): THREE.Group {
+  const g = new THREE.Group();
+  g.name = "boot-details-sandal-fit";
+  const { min, max, center, size } = fit;
+  const w = size.x;
+  const len = size.y;
+  const h = size.z;
+  const leather = softBootMat(params);
+  const soleH = Math.max(0.012, h * 0.2 + params.sole * 0.06);
+  const sole = new THREE.Mesh(new THREE.BoxGeometry(w * 1.05, len * 1.05, soleH), leather);
+  sole.position.set(center.x, center.y, min.z - soleH * 0.35);
+  g.add(sole);
+  for (const t of [0.15, 0.45, 0.7]) {
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(w * 1.05, len * 0.08, h * 0.12), leather);
+    strap.position.set(center.x, center.y - len * 0.35 + t * len, max.z * 0.3);
+    g.add(strap);
+  }
+  const toeLoop = new THREE.Mesh(new THREE.TorusGeometry(w * 0.12, h * 0.04, 5, 10), leather);
+  toeLoop.position.set(center.x, center.y + len * 0.35, center.z);
+  toeLoop.rotation.x = Math.PI / 2;
+  g.add(toeLoop);
+  return g;
 }
 
 /**
@@ -2088,13 +2320,22 @@ export function buildSkinnedArmor(sources: THREE.SkinnedMesh[], params: ArmorPar
   params = { ...params, style: armorVisual(params.style) };
   const r = rng(params.seed);
   const bulk = params.bulk;
-  // Más finas en general; ropa común aún más ceñida
-  const casual = params.style === "hoodie" || params.style === "jacket" || params.style === "vest";
+  const s = params.style;
+  const casual =
+    s === "hoodie" ||
+    s === "jacket" ||
+    s === "vest" ||
+    s === "shirt" ||
+    s === "tunic" ||
+    s === "coat" ||
+    s === "duster" ||
+    s === "poncho" ||
+    s === "tabard";
   const baseInflate = casual
-    ? 0.012 + bulk * 0.01
-    : params.style === "plate"
+    ? 0.012 + bulk * 0.01 + (s === "coat" || s === "duster" || s === "tunic" ? 0.006 : 0)
+    : s === "plate" || s === "cuirass"
       ? 0.02 + bulk * 0.012
-      : params.style === "padded"
+      : s === "padded" || s === "gambeson"
         ? 0.022 + bulk * 0.014
         : 0.016 + bulk * 0.01;
 
@@ -2108,7 +2349,7 @@ export function buildSkinnedArmor(sources: THREE.SkinnedMesh[], params: ArmorPar
   });
   const layers: THREE.Group[] = [base];
 
-  if (params.style === "plate" || params.style === "scale") {
+  if (s === "plate" || s === "scale" || s === "lamellar" || s === "cuirass" || s === "brigandine") {
     layers.push(
       createSkinnedShell(sources, {
         boneNames: ARMOR_SHOULDER_BONES,
@@ -2120,13 +2361,19 @@ export function buildSkinnedArmor(sources: THREE.SkinnedMesh[], params: ArmorPar
       }),
     );
   }
-  if (params.style === "plate" || params.style === "vest" || params.rarity === "epic") {
+  if (
+    s === "plate" ||
+    s === "cuirass" ||
+    s === "vest" ||
+    s === "brigandine" ||
+    rarityT(params.rarity) >= 0.75
+  ) {
     layers.push(
       createSkinnedShell(sources, {
         boneNames: ARMOR_CHEST_BONES,
         excludeBoneNames: ARMOR_EXCLUDE_BONES,
         inflate: baseInflate + 0.008,
-        material: params.style === "vest" ? softArmorMat(params) : softAccentMat(params),
+        material: s === "vest" || s === "tabard" ? softArmorMat(params) : softAccentMat(params),
         minWeight: 0.22,
         uvScale: 2.2,
       }),
@@ -2523,53 +2770,71 @@ function armorClothesDecors(
  * detalles (cordones/suela) afuera del shell.
  */
 export function buildSkinnedBoots(sources: THREE.SkinnedMesh[], params: BootsParams): THREE.Group {
-  params = { ...params, style: bootVisual(params.style) };
+  const style = params.style;
   const r = rng(params.seed);
-  const metal = params.style === "plate" || params.style === "greaves";
-  const low = params.style === "canvas" || params.style === "sport";
-  const midHigh = params.style === "military" || params.style === "combat";
-  const tall = params.style === "trail" || params.style === "greaves" || midHigh;
+  const heightClass = bootHeightClass(style);
+  const metal = heightClass === "metal";
+  const low = heightClass === "low" || heightClass === "clog" || heightClass === "open";
+  const tall = heightClass === "tall" || heightClass === "metal" || heightClass === "mid";
 
-  // Lona/sport/trainers: SOLO pie (sin caña). Altos: LowerLeg.
-  const bones = low ? BOOT_BONES : tall || metal ? BOOT_TALL_BONES : BOOT_BONES;
+  // Low/clog/open: SOLO pie. Mid/tall/metal: LowerLeg.
+  const bones = low ? BOOT_BONES : tall ? BOOT_TALL_BONES : BOOT_BONES;
   const bootExclude = low ? new Set(["LowerLegL", "LowerLegR", "UpperLegL", "UpperLegR", "Hips"]) : undefined;
 
-  // Shell delgado — si engorda, tapa cordones
   let inflate = 0.012;
   let minWeight = 0.1;
   let bias = { x: 1, y: 1, z: 1 };
   let shape = { x: 1, y: 1, z: 1 };
 
-  if (params.style === "canvas") {
-    // Low-top sin caña; Y no tan aplastada o engulle cordones
+  if (style === "crocs") {
+    inflate = 0.018 + params.sole * 0.05;
+    minWeight = 0.12;
+    bias = { x: 1.18, y: 0.5, z: 1.22 }; // ancho y chato (clog)
+    shape = { x: 1.14, y: 0.62, z: 1.16 };
+  } else if (style === "sandal") {
+    inflate = 0.008 + params.sole * 0.02;
+    minWeight = 0.1;
+    bias = { x: 1.05, y: 0.4, z: 1.1 };
+    shape = { x: 1.02, y: 0.55, z: 1.08 };
+  } else if (style === "canvas") {
     inflate = 0.011 + params.sole * 0.02;
     minWeight = 0.14;
     bias = { x: 1.08, y: 0.55, z: 1.15 };
     shape = { x: 1.04, y: 0.68, z: 1.1 };
-  } else if (params.style === "sport") {
+  } else if (style === "sport" || style === "sneaker") {
     inflate = 0.011 + params.sole * 0.04;
     minWeight = 0.13;
     bias = { x: 1.1, y: 0.58, z: 1.16 };
     shape = { x: 1.06, y: 0.7, z: 1.12 };
-  } else if (params.style === "military") {
+  } else if (style === "loafer" || style === "oxford") {
+    inflate = 0.01 + params.sole * 0.02;
+    minWeight = 0.13;
+    bias = { x: 1.02, y: 0.52, z: 1.12 };
+    shape = { x: 1.0, y: 0.65, z: 1.08 };
+  } else if (style === "military" || style === "dress" || style === "work") {
     inflate = 0.014 + params.height * 0.01;
     minWeight = 0.16;
     bias = { x: 0.95, y: 1.15, z: 1.0 };
     shape = { x: 0.98, y: 1.08, z: 1.02 };
-  } else if (params.style === "combat") {
+  } else if (style === "combat") {
     inflate = 0.015 + params.height * 0.012;
     minWeight = 0.15;
-    bias = { x: 1.0, y: 1.25, z: 1.05 }; // caña marcada
+    bias = { x: 1.0, y: 1.25, z: 1.05 };
     shape = { x: 1.0, y: 1.18, z: 1.04 };
-  } else if (params.style === "trail") {
+  } else if (style === "trail" || style === "riding") {
     inflate = 0.014 + params.height * 0.014;
     minWeight = 0.17;
     bias = { x: 0.95, y: 1.35, z: 0.95 };
     shape = { x: 0.96, y: 1.22, z: 1.0 };
-  } else if (params.style === "greaves") {
+  } else if (style === "ski") {
+    inflate = 0.02 + params.height * 0.016;
+    minWeight = 0.18;
+    bias = { x: 1.1, y: 1.4, z: 1.05 };
+    shape = { x: 1.08, y: 1.25, z: 1.05 };
+  } else if (style === "greaves") {
     inflate = 0.016 + params.height * 0.01;
     minWeight = 0.2;
-    bias = { x: 0.9, y: 1.4, z: 0.85 }; // espinillera
+    bias = { x: 0.9, y: 1.4, z: 0.85 };
     shape = { x: 0.94, y: 1.28, z: 0.95 };
   } else {
     // plate
@@ -2586,7 +2851,7 @@ export function buildSkinnedBoots(sources: THREE.SkinnedMesh[], params: BootsPar
       inflate,
       material: softBootMat(params, metal ? "plate" : "base"),
       minWeight,
-      uvScale: low ? 2.2 : params.style === "combat" ? 1.6 : 2.6,
+      uvScale: low ? 2.2 : style === "combat" || style === "ski" ? 1.6 : 2.6,
       inflateNormalBias: bias,
       shapeScale: shape,
     }),
@@ -2597,7 +2862,7 @@ export function buildSkinnedBoots(sources: THREE.SkinnedMesh[], params: BootsPar
   const toeDrop = toeMat ? { toeFrac: bootDetailTune.toeLen, toeMode: "drop" as const } : {};
 
   // Capas extra solo metal/combat (lona/trainer = 1 shell continuo, sin islas)
-  if (metal || (params.style === "combat" && r() > 0.4)) {
+  if (metal || ((style === "combat" || style === "work") && r() > 0.4)) {
     layers.push(
       createSkinnedShell(sources, {
         boneNames: BOOT_BONES,
@@ -2650,21 +2915,19 @@ export function buildSkinnedBoots(sources: THREE.SkinnedMesh[], params: BootsPar
   // Nunca calf-tie en lona/trainer (era la “caña” flotante en LowerLeg)
   const wantCalfTie =
     !low &&
-    params.style === "combat" &&
+    (style === "combat" || style === "riding") &&
     (closure === "slipon" || closure === "instepStrap" || rng(params.seed + 9)() > 0.72);
 
-  // Detalles DESPUÉS del shell: medir AABB.
-  // Canvas + caña/metal: espacio Foot directo. Sport: wrapForFoot.
   const tallFit =
-    params.style === "military" ||
-    params.style === "combat" ||
-    params.style === "trail" ||
-    params.style === "greaves" ||
-    params.style === "plate";
+    heightClass === "mid" || heightClass === "tall" || heightClass === "metal";
   for (const side of ["FootL", "FootR"] as const) {
     const fit = measureFootShellFit(root, sources, side);
     if (!fit) continue;
-    if (params.style === "canvas") {
+    if (style === "crocs") {
+      attachDecor(root, sources, side, buildCrocsDetailsOnFootFit(params, fit));
+    } else if (style === "sandal") {
+      attachDecor(root, sources, side, buildSandalDetailsOnFootFit(params, fit));
+    } else if (style === "canvas") {
       attachDecor(root, sources, side, buildCanvasDetailsOnFootFit(params, fit));
     } else if (tallFit) {
       attachDecor(root, sources, side, buildTallBootDetailsOnFootFit(params, fit));
@@ -2748,7 +3011,21 @@ export function buildSkinnedPants(sources: THREE.SkinnedMesh[], params: PantsPar
   } else if (params.style === "jogger") {
     inflate = 0.02 + params.length * 0.006;
     shape = { x: 1.04, y: 0.98, z: 1.04 };
-  } else if (params.style === "cargo") {
+  } else if (params.style === "shorts") {
+    inflate = 0.014 + r() * 0.003;
+    shape = { x: 1.02, y: 0.72, z: 1.02 };
+    bias = { x: 1, y: 0.55, z: 1 };
+  } else if (params.style === "kilt") {
+    inflate = 0.022 + r() * 0.005;
+    shape = { x: 1.12, y: 0.85, z: 1.08 };
+    bias = { x: 1.1, y: 0.7, z: 1.05 };
+  } else if (params.style === "chaps") {
+    inflate = 0.012;
+    shape = { x: 1.05, y: 1.0, z: 0.95 };
+  } else if (params.style === "breeches") {
+    inflate = 0.015;
+    shape = { x: 1.0, y: 0.9, z: 1.02 };
+  } else if (params.style === "cargo" || params.style === "fatigues") {
     inflate = 0.017 + r() * 0.004;
     shape = { x: 1.01, y: 0.98, z: 1.01 };
   } else if (params.style === "plated") {

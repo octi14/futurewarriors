@@ -1,7 +1,14 @@
 import * as THREE from "three";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { ELEMENT_COLORS } from "../shared/elements";
 import type { WorldState } from "../sim/world";
-import { AI_CORPSE_TIME, AI_DEATH_ANIM, isTwoHanded, SLASH_DURATION } from "../sim/world";
+import {
+  AI_CORPSE_TIME,
+  AI_DEATH_ANIM,
+  getHitDamageBreakdown,
+  isTwoHanded,
+  SLASH_DURATION,
+} from "../sim/world";
 import { createAiBody, type AiBodyHandle } from "./aiBody";
 import {
   attachEquippedVisuals,
@@ -329,7 +336,9 @@ export async function createRenderer(container: HTMLElement, mapSize = 180): Pro
       const mid = cut ? 1 : 0.15;
       const arcT = Math.min(1, Math.max(0, (u - 0.18) / 0.42));
       swingMesh.visible = showArc && u > 0.16 && u < 0.72;
-      swingMat.opacity = 0.03 + mid * 0.2 * Math.sin(arcT * Math.PI);
+      const trailEl = getHitDamageBreakdown(world).trailElement;
+      swingMat.color.setHex(trailEl ? ELEMENT_COLORS[trailEl] : 0xe8dcc8);
+      swingMat.opacity = 0.03 + mid * (trailEl ? 0.32 : 0.2) * Math.sin(arcT * Math.PI);
       swingMesh.scale.setScalar(0.88 + arcT * 0.22);
       // Arco diagonal alineado al corte (variante)
       const v = world.slashVariant % 3;

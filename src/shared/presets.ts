@@ -7,109 +7,143 @@ import type {
   ShieldParams,
 } from "./types";
 
-/** Género nuevo → familia visual/stats que ya existe. El ítem guarda el género. */
-export const BOOT_VISUAL: Record<BootsParams["style"], BootsParams["style"]> = {
-  canvas: "canvas",
-  sport: "sport",
-  military: "military",
-  combat: "combat",
-  trail: "trail",
-  greaves: "greaves",
-  plate: "plate",
-  sneaker: "sport",
-  sandal: "sport",
-  loafer: "canvas",
-  oxford: "canvas",
-  riding: "military",
-  dress: "military",
-  work: "combat",
-  ski: "trail",
-};
+/**
+ * Cada style es su propio mesh (identidad).
+ * Antes había aliases (crocs→sport, etc.); ya no — cada uno se dibuja aparte.
+ */
+function identity<T extends string>(keys: readonly T[]): Record<T, T> {
+  const out = {} as Record<T, T>;
+  for (const k of keys) out[k] = k;
+  return out;
+}
 
-export const ARMOR_VISUAL: Record<ArmorParams["style"], ArmorParams["style"]> = {
-  hoodie: "hoodie",
-  jacket: "jacket",
-  vest: "vest",
-  leather: "leather",
-  padded: "padded",
-  chain: "chain",
-  scale: "scale",
-  plate: "plate",
-  shirt: "hoodie",
-  tunic: "hoodie",
-  coat: "jacket",
-  duster: "jacket",
-  poncho: "vest",
-  tabard: "vest",
-  brigandine: "leather",
-  gambeson: "padded",
-  hauberk: "chain",
-  lamellar: "scale",
-  cuirass: "plate",
-};
+export const BOOT_VISUAL = identity([
+  "canvas",
+  "sport",
+  "military",
+  "combat",
+  "trail",
+  "greaves",
+  "plate",
+  "sneaker",
+  "sandal",
+  "loafer",
+  "oxford",
+  "riding",
+  "dress",
+  "work",
+  "ski",
+  "crocs",
+] as const satisfies readonly BootsParams["style"][]);
 
-export const PANTS_VISUAL: Record<PantsParams["style"], PantsParams["style"]> = {
-  cloth: "cloth",
-  jeans: "jeans",
-  jogger: "jogger",
-  cargo: "cargo",
-  leather: "leather",
-  plated: "plated",
-  shorts: "jogger",
-  chaps: "leather",
-  kilt: "cloth",
-  breeches: "leather",
-  fatigues: "cargo",
-};
+export const ARMOR_VISUAL = identity([
+  "hoodie",
+  "jacket",
+  "vest",
+  "leather",
+  "padded",
+  "chain",
+  "scale",
+  "plate",
+  "shirt",
+  "tunic",
+  "coat",
+  "duster",
+  "poncho",
+  "tabard",
+  "brigandine",
+  "gambeson",
+  "hauberk",
+  "lamellar",
+  "cuirass",
+] as const satisfies readonly ArmorParams["style"][]);
 
-export const GLOVE_VISUAL: Record<GlovesParams["style"], GlovesParams["style"]> = {
-  cloth: "cloth",
-  leather: "leather",
-  gauntlet: "gauntlet",
-  wraps: "cloth",
-  mittens: "cloth",
-  bracers: "leather",
-};
+export const PANTS_VISUAL = identity([
+  "cloth",
+  "jeans",
+  "jogger",
+  "cargo",
+  "leather",
+  "plated",
+  "shorts",
+  "chaps",
+  "kilt",
+  "breeches",
+  "fatigues",
+] as const satisfies readonly PantsParams["style"][]);
 
-export const BELT_VISUAL: Record<BeltParams["style"], BeltParams["style"]> = {
-  rope: "rope",
-  leather: "leather",
-  plated: "plated",
-  sash: "rope",
-  chainbelt: "plated",
-  utility: "leather",
-};
+export const GLOVE_VISUAL = identity([
+  "cloth",
+  "leather",
+  "gauntlet",
+  "wraps",
+  "mittens",
+  "bracers",
+] as const satisfies readonly GlovesParams["style"][]);
 
-export const SHIELD_VISUAL: Record<ShieldParams["shape"], ShieldParams["shape"]> = {
-  round: "round",
-  heater: "heater",
-  kite: "kite",
-  buckler: "round",
-  targe: "round",
-  tower: "kite",
-  pavise: "heater",
-};
+export const BELT_VISUAL = identity([
+  "rope",
+  "leather",
+  "plated",
+  "sash",
+  "chainbelt",
+  "utility",
+] as const satisfies readonly BeltParams["style"][]);
+
+export const SHIELD_VISUAL = identity([
+  "round",
+  "heater",
+  "kite",
+  "buckler",
+  "targe",
+  "tower",
+  "pavise",
+] as const satisfies readonly ShieldParams["shape"][]);
+
+/** @deprecated Ya no hay alias; se mantiene por compat. */
+export function resolveVisualStyle<T extends string>(style: T, _table: Record<T, T>, _max = 4): T {
+  return style;
+}
 
 export function bootVisual(s: BootsParams["style"]): BootsParams["style"] {
-  return BOOT_VISUAL[s];
+  return s;
 }
 export function armorVisual(s: ArmorParams["style"]): ArmorParams["style"] {
-  return ARMOR_VISUAL[s];
+  return s;
 }
 export function pantsVisual(s: PantsParams["style"]): PantsParams["style"] {
-  return PANTS_VISUAL[s];
+  return s;
 }
 export function gloveVisual(s: GlovesParams["style"]): GlovesParams["style"] {
-  return GLOVE_VISUAL[s];
+  return s;
 }
 export function beltVisual(s: BeltParams["style"]): BeltParams["style"] {
-  return BELT_VISUAL[s];
+  return s;
 }
 export function shieldVisual(s: ShieldParams["shape"]): ShieldParams["shape"] {
-  return SHIELD_VISUAL[s];
+  return s;
 }
 
 export function pickStyle<T extends string>(r: () => number, table: Record<T, T>): T {
   const keys = Object.keys(table) as T[];
   return keys[Math.floor(r() * keys.length)]!;
+}
+
+/** Familia de caña/altura para shells (no implica mismo mesh). */
+export function bootHeightClass(
+  s: BootsParams["style"],
+): "clog" | "open" | "low" | "mid" | "tall" | "metal" {
+  if (s === "crocs") return "clog";
+  if (s === "sandal") return "open";
+  if (
+    s === "canvas" ||
+    s === "sport" ||
+    s === "sneaker" ||
+    s === "loafer" ||
+    s === "oxford"
+  )
+    return "low";
+  if (s === "dress" || s === "military" || s === "work") return "mid";
+  if (s === "greaves" || s === "plate") return "metal";
+  return "tall"; // combat, trail, riding, ski
 }

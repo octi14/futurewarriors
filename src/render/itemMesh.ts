@@ -26,16 +26,16 @@ import type {
   SwordParams,
   ThrowParams,
 } from "../shared/types";
+import { rarityT } from "../shared/rng";
 import { buildSwordMesh } from "./swordMesh";
 
 export function metalColor(hue: number, rarity: Rarity): THREE.Color {
-  // Acero pulido: más luminoso y saturado según rareza
-  const sat = rarity === "epic" ? 0.48 : rarity === "rare" ? 0.36 : rarity === "uncommon" ? 0.26 : 0.12;
-  const lit = rarity === "epic" ? 0.72 : rarity === "rare" ? 0.66 : rarity === "uncommon" ? 0.6 : 0.56;
+  const t = rarityT(rarity);
+  const sat = 0.08 + t * 0.48;
+  const lit = 0.5 + t * 0.28;
   const base = new THREE.Color().setHSL(hue, sat, lit);
-  if (rarity === "uncommon") base.offsetHSL(0.04, 0.04, 0.03);
-  if (rarity === "rare") base.offsetHSL(0.02, 0.06, 0.05);
-  if (rarity === "epic") base.offsetHSL(-0.02, 0.08, 0.07);
+  if (t >= 0.35) base.offsetHSL(0.03, 0.03 + t * 0.04, 0.02 + t * 0.04);
+  if (t >= 0.7) base.offsetHSL(-0.02, 0.04, 0.03);
   return base;
 }
 
@@ -46,8 +46,8 @@ export function makeMetalMat(
   opts?: { polish?: number },
 ): THREE.MeshStandardMaterial {
   const polish = opts?.polish ?? 1;
-  const rough =
-    rarity === "epic" ? 0.1 : rarity === "rare" ? 0.14 : rarity === "uncommon" ? 0.2 : 0.26;
+  const t = rarityT(rarity);
+  const rough = 0.3 - t * 0.22;
   const color = metalColor(hue, rarity);
   const g = rarityGlowStrength(rarity);
   const emissive = color.clone().multiplyScalar(0.03 + g * 0.1);
@@ -75,12 +75,10 @@ export function makeEdgeMat(hue: number, rarity: Rarity): THREE.MeshStandardMate
   });
 }
 
-/** 0..1 sutil: common apenas se nota, epic claro pero sin flare. */
+/** 0..1 sutil: vulgar casi nada; mythic fuerte pero sin flare de loot. */
 export function rarityGlowStrength(rarity: Rarity): number {
-  if (rarity === "epic") return 0.55;
-  if (rarity === "rare") return 0.32;
-  if (rarity === "uncommon") return 0.16;
-  return 0.05;
+  const t = rarityT(rarity);
+  return 0.03 + t * t * 0.72;
 }
 
 export function itemHue(item: ItemInstance): number {
@@ -386,7 +384,7 @@ function makeArmorSurfaceMat(params: ArmorParams): THREE.MeshStandardMaterial {
   // Metales: chain / scale / plate
   if (finish === "bare") {
     // Acero/hierro sin pintar — poco saturado, gris frío
-    const c = new THREE.Color().setHSL(0.58, rarity === "epic" ? 0.1 : 0.04, 0.52);
+    const c = new THREE.Color().setHSL(0.58, 0.04 + rarityT(rarity) * 0.1, 0.52);
     return new THREE.MeshStandardMaterial({
       color: c,
       metalness: 0.92,
@@ -706,15 +704,16 @@ export function buildWornArmorMesh(params: ArmorParams): THREE.Group {
  */
 export function buildWornBeltMesh(params: BeltParams): THREE.Group {
   const g = new THREE.Group();
+  const st = params.style;
   const mat = new THREE.MeshStandardMaterial({
     color:
-      params.style === "rope"
-        ? new THREE.Color().setHSL(0.12, 0.35, 0.45)
-        : params.style === "leather"
+      st === "rope" || st === "sash"
+        ? new THREE.Color().setHSL(st === "sash" ? params.hue : 0.12, st === "sash" ? 0.4 : 0.35, 0.45)
+        : st === "leather" || st === "utility"
           ? leatherColor(params.hue)
           : metalColor(params.hue, params.rarity),
-    metalness: params.style === "plated" ? 0.65 : 0.08,
-    roughness: 0.65,
+    metalness: st === "plated" || st === "chainbelt" ? 0.65 : 0.08,
+    roughness: st === "sash" ? 0.8 : 0.65,
   });
   // Abdomen bone scale≈0.37
   const radius = 0.155 * U;
@@ -740,16 +739,23 @@ function buildShieldMesh(paramsIn: ShieldParams): THREE.Group {
   const wood = makeWoodMat(params.metalHue, mat === "wood" ? 0.32 : 0.26);
   const metal = makeMetalMat(params.metalHue, params.rarity, { polish: mat === "metal" ? 1.05 : 0.9 });
   const face = mat === "metal" ? metal : wood;
+  const sh = params.shape;
   let body: THREE.Mesh;
-  if (params.shape === "round") {
+  if (sh === "round" || sh === "buckler" || sh === "targe") {
+    const r = params.width * (sh === "buckler" ? 0.38 : sh === "targe" ? 0.48 : 0.55);
+    body = new THREE.Mesh(new THREE.CylinderGeometry(r, r, sh === "buckler" ? 0.05 : 0.06, 20), face);
+    body.rotation.x = Math.PI / 2;
+  } else if (sh === "kite" || sh === "tower") {
+    const h = params.height * (sh === "tower" ? 1.15 : 1);
+    const w = params.width * (sh === "tower" ? 0.55 : 0.7);
+    body = new THREE.Mesh(new THREE.BoxGeometry(w, h, sh === "tower" ? 0.08 : 0.06), face);
+  } else if (sh === "pavise") {
     body = new THREE.Mesh(
-      new THREE.CylinderGeometry(params.width * 0.55, params.width * 0.55, 0.06, 20),
+      new THREE.BoxGeometry(params.width * 0.85, params.height * 1.05, 0.09),
       face,
     );
-    body.rotation.x = Math.PI / 2;
-  } else if (params.shape === "kite") {
-    body = new THREE.Mesh(new THREE.BoxGeometry(params.width * 0.7, params.height, 0.06), face);
   } else {
+    // heater
     body = new THREE.Mesh(new THREE.BoxGeometry(params.width, params.height * 0.85, 0.06), face);
   }
   g.add(body);
