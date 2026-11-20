@@ -102,7 +102,7 @@ export function itemIconDataUrl(item: ItemInstance, size = 128): string {
 
   const mesh = buildItemMesh(item);
   // Ángulo “en vitrina” según tipo
-  if (item.kind === "sword" || item.kind === "axe" || item.kind === "throw") {
+  if (item.kind === "sword" || item.kind === "axe" || item.kind === "club" || item.kind === "throw") {
     mesh.rotation.y += 0.4;
     mesh.rotation.z += 0.15;
   } else if (item.kind === "bow" || item.kind === "crossbow") {
@@ -136,14 +136,22 @@ export function itemTooltipHtml(item: ItemInstance): string {
   if (s.damage) lines.push(`<div class="tt-stat">Daño <b>${s.damage}</b></div>`);
   if (s.element && s.elementDamage)
     lines.push(
-      `<div class="tt-stat">${ELEMENT_LABEL_ES[s.element]} <b>+${s.elementDamage}</b></div>`,
+      `<div class="tt-stat">${ELEMENT_LABEL_ES[s.element]} <b>+${s.elementDamage}%</b></div>`,
     );
   if (s.reach) lines.push(`<div class="tt-stat">Alcance <b>${s.reach}</b></div>`);
   if (s.attackSpeed) lines.push(`<div class="tt-stat">Vel. ataque <b>${s.attackSpeed}</b></div>`);
   if (s.armor) lines.push(`<div class="tt-stat">Armadura <b>${s.armor}</b></div>`);
-  if (s.moveSpeedMult !== 1)
-    lines.push(`<div class="tt-stat">Vel. movimiento <b>×${s.moveSpeedMult}</b></div>`);
+  if (s.moveSpeedMult !== 1) {
+    const pct = Math.round((s.moveSpeedMult - 1) * 1000) / 10;
+    lines.push(
+      `<div class="tt-stat">Vel. movimiento <b>${pct >= 0 ? "+" : ""}${pct}%</b></div>`,
+    );
+  }
   if (s.maxHpBonus) lines.push(`<div class="tt-stat">HP máx. <b>+${s.maxHpBonus}</b></div>`);
+  if (s.woundChance)
+    lines.push(
+      `<div class="tt-stat">Herida abierta <b>${Math.round(s.woundChance * 100)}%</b></div>`,
+    );
   if (item.easterEgg) lines.push(`<div class="tt-meta">Easter egg</div>`);
   return lines.join("");
 }

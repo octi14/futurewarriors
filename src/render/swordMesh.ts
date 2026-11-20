@@ -156,49 +156,73 @@ export function buildSwordMesh(params: SwordParams): THREE.Group {
   const bladeW = params.bladeWidth;
   const segs = 10;
   let bladeGeom: THREE.BufferGeometry;
-  if (params.bladeType === "curved") {
-    bladeGeom = new THREE.BoxGeometry(bladeW, 0.04, bladeLen, 1, 1, segs);
+  if (params.bladeType === "curved" || params.bladeType === "katana") {
+    const curve = params.bladeType === "katana" ? 0.55 : 0.9;
+    bladeGeom = new THREE.BoxGeometry(bladeW, params.bladeType === "katana" ? 0.028 : 0.04, bladeLen, 1, 1, segs);
     const pos = bladeGeom.attributes.position;
     for (let i = 0; i < pos.count; i++) {
       const z = pos.getZ(i);
       const t = (z + bladeLen / 2) / bladeLen;
-      pos.setX(i, pos.getX(i) + Math.sin(t * Math.PI) * bladeW * 0.9);
+      pos.setX(i, pos.getX(i) + Math.sin(t * Math.PI) * bladeW * curve);
     }
     pos.needsUpdate = true;
   } else if (params.bladeType === "wide") {
     bladeGeom = new THREE.BoxGeometry(bladeW * 1.35, 0.045, bladeLen, 1, 1, segs);
+  } else if (params.bladeType === "foil") {
+    bladeGeom = new THREE.BoxGeometry(bladeW * 0.55, 0.022, bladeLen, 1, 1, segs);
+  } else if (params.bladeType === "saber") {
+    bladeGeom = new THREE.CylinderGeometry(bladeW * 0.55, bladeW * 0.35, bladeLen, 10);
+    bladeGeom.rotateX(Math.PI / 2);
   } else {
     bladeGeom = new THREE.BoxGeometry(bladeW, 0.035, bladeLen, 1, 1, segs);
   }
-  taperToPoint(bladeGeom, bladeLen, params.bladeType === "wide" ? 0.74 : 0.66);
+  if (params.bladeType !== "saber") {
+    taperToPoint(
+      bladeGeom,
+      bladeLen,
+      params.bladeType === "wide" ? 0.74 : params.bladeType === "foil" ? 0.5 : 0.66,
+    );
+  }
 
   const bladeZ = bladeLen / 2 + params.gripLength * 0.15;
-  const blade = new THREE.Mesh(bladeGeom, metal);
+  const bladeMat =
+    params.bladeType === "saber"
+      ? new THREE.MeshStandardMaterial({
+          color: new THREE.Color().setHSL(params.metalHue, 0.85, 0.55),
+          emissive: new THREE.Color().setHSL(params.metalHue, 1, 0.45),
+          emissiveIntensity: 1.4,
+          metalness: 0.2,
+          roughness: 0.25,
+        })
+      : metal;
+  const blade = new THREE.Mesh(bladeGeom, bladeMat);
   blade.position.z = bladeZ;
   group.add(blade);
 
-  const edgeW = Math.max(0.008, bladeW * 0.12);
-  const edgeH = params.bladeType === "wide" ? 0.052 : 0.042;
-  for (const side of [-1, 1]) {
-    const edgeGeom = new THREE.BoxGeometry(edgeW, edgeH, bladeLen * 0.92, 1, 1, segs);
-    taperToPoint(edgeGeom, bladeLen * 0.92, 0.62);
-    const edge = new THREE.Mesh(edgeGeom, edgeMat);
-    edge.position.set(
-      side * (bladeW * (params.bladeType === "wide" ? 0.55 : 0.42)),
-      0,
-      bladeZ - bladeLen * 0.02,
-    );
-    group.add(edge);
-  }
+  if (params.bladeType !== "saber") {
+    const edgeW = Math.max(0.008, bladeW * 0.12);
+    const edgeH = params.bladeType === "wide" ? 0.052 : 0.042;
+    for (const side of [-1, 1]) {
+      const edgeGeom = new THREE.BoxGeometry(edgeW, edgeH, bladeLen * 0.92, 1, 1, segs);
+      taperToPoint(edgeGeom, bladeLen * 0.92, 0.62);
+      const edge = new THREE.Mesh(edgeGeom, edgeMat);
+      edge.position.set(
+        side * (bladeW * (params.bladeType === "wide" ? 0.55 : params.bladeType === "foil" ? 0.28 : 0.42)),
+        0,
+        bladeZ - bladeLen * 0.02,
+      );
+      group.add(edge);
+    }
 
-  const tipLen = bladeLen * 0.14;
-  const tip = new THREE.Mesh(
-    new THREE.ConeGeometry(Math.max(0.012, bladeW * 0.42), tipLen, 6),
-    edgeMat,
-  );
-  tip.rotation.x = Math.PI / 2;
-  tip.position.z = bladeZ + bladeLen * 0.5 - tipLen * 0.15;
-  group.add(tip);
+    const tipLen = bladeLen * 0.14;
+    const tip = new THREE.Mesh(
+      new THREE.ConeGeometry(Math.max(0.012, bladeW * 0.42), tipLen, 6),
+      edgeMat,
+    );
+    tip.rotation.x = Math.PI / 2;
+    tip.position.z = bladeZ + bladeLen * 0.5 - tipLen * 0.15;
+    group.add(tip);
+  }
 
   addGuard(group, params, guardMat, accent);
 

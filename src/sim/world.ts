@@ -1,12 +1,12 @@
 import { aggregateCombatElements } from "../shared/elements";
 import { createRandomLootItem, isDualWieldable } from "../shared/gear";
-import { createSwordItem } from "../shared/swords";
 import { getBagItem, moveBagItem, removeBagItem, tryPlaceItem } from "./bag";
 import type {
   Actor,
   AxeParams,
   BagPlacement,
   ChargeKind,
+  ClubParams,
   CoinDrop,
   CombatAnimKind,
   CoreStatId,
@@ -27,8 +27,11 @@ import type {
 
 export { BAG_COLS, BAG_ROWS } from "./bag";
 
-/** Movimiento m/s de referencia a velocidad-atributo 10 */
-const MOVE_SPEED_PER_STAT = 0.31;
+/**
+ * Velocidad base del personaje (m/s por punto de stat `core.speed`).
+ * Con speed=10 → ~3.1 m/s; luego se multiplica por el % aditivo de equipo y se capea.
+ */
+const MOVE_SPEED_PER_STAT = 0.3;
 const BASE_PLAYER_MAX_HP = 100;
 const BASE_PLAYER_MAX_ENERGY = 100;
 
@@ -57,7 +60,7 @@ const STAT_COST_GROWTH = 1.55;
 /** Duración visual/lógica del swing (s). */
 export const SLASH_DURATION = 0.52;
 /** Cuántas variantes de animación de espadazo ciclan. */
-export const SLASH_VARIANT_COUNT = 3;
+export const SLASH_VARIANT_COUNT = 4;
 const AI_STUN_ON_HIT = 0.55;
 /** Caída / animación de muerte. */
 export const AI_DEATH_ANIM = 0.9;
@@ -167,8 +170,12 @@ function nextId(prefix: string): string {
   return `${prefix}_${idSeq++}`;
 }
 
+/** Tope duro de velocidad de movimiento (m/s), pase lo que pase el gear. */
+const MAX_MOVE_SPEED = 6.2;
+
+/** m/s final = core.speed * MOVE_SPEED_PER_STAT * moveMult (1 + Σ% equipo), capped. */
 function moveSpeedFromCore(core: CoreStats, moveMult = 1): number {
-  return core.speed * MOVE_SPEED_PER_STAT * moveMult;
+  return Math.min(MAX_MOVE_SPEED, core.speed * MOVE_SPEED_PER_STAT * moveMult);
 }
 
 function makeAi(pos: Vec2, tier = 0, role: "hunter" | "bug" = "bug"): Actor {
@@ -205,11 +212,12 @@ function makeAi(pos: Vec2, tier = 0, role: "hunter" | "bug" = "bug"): Actor {
     height: 0,
     velY: 0,
     crouching: false,
+    bleedTimer: 0,
+    bleedDps: 0,
   };
 }
 
 export function createWorld(config: WorldConfig = { mapSize: 180, aiCount: 8, bugCount: 22 }): WorldState {
-  const starter = createSwordItem(42);
   const bag: BagPlacement[] = [];
 
   const playerCore = { ...DEFAULT_PLAYER_CORE };
@@ -238,6 +246,8 @@ export function createWorld(config: WorldConfig = { mapSize: 180, aiCount: 8, bu
     height: 0,
     velY: 0,
     crouching: false,
+    bleedTimer: 0,
+    bleedDps: 0,
   };
 
   const ais: Actor[] = [];
@@ -258,7 +268,6 @@ export function createWorld(config: WorldConfig = { mapSize: 180, aiCount: 8, bu
   scatter(config.bugCount, "bug");
 
   const equipment = emptyEquipment();
-  equipment.weapon = starter;
 
   return {
     config,
@@ -303,12 +312,13 @@ export function getOffhandWeapon(world: WorldState): ItemInstance | null {
   return o && isDualWieldable(o) ? o : null;
 }
 
-function emptyWeaponStats(): ItemStats {
+/** Puños desarmados. */
+function fistStats(): ItemStats {
   return {
-    damage: 6,
-    reach: 0.7,
-    attackSpeed: 1.2,
-    windup: 0.15,
+    damage: 5,
+    reach: 0.72,
+    attackSpeed: 1.35,
+    windup: 0.1,
     armor: 0,
     moveSpeedMult: 1,
     maxHpBonus: 0,
@@ -317,11 +327,27 @@ function emptyWeaponStats(): ItemStats {
   };
 }
 
-/** Stats de combate: arma principal + bonus de doble arma si aplica. */
+/** Desarmado: puños, o garras si hay gloves claws. */
+function unarmedCombatStats(world: WorldState): ItemStats {
+  const g = world.equipment.gloves;
+  const claws = g && (g.params as { style?: string }).style === "claws";
+  const base = fistStats();
+  if (!claws || !g) return base;
+  return {
+    ...base,
+    damage: Math.round((base.damage + (g.stats.damage || 4)) * 10) / 10,
+    reach: Math.max(base.reach, 0.85 + (g.stats.reach || 0)),
+    attackSpeed: Math.max(base.attackSpeed, g.stats.attackSpeed || 1.25),
+    woundChance: g.stats.woundChance ?? 0.45,
+  };
+}
+
+/** Stats de combate: arma principal + bonus de doble arma si aplica. Sin arma → puños/garras. */
 export function getCombatWeaponStats(world: WorldState): ItemStats {
   const main = getEquipped(world);
+  if (!main) return unarmedCombatStats(world);
   const off = getOffhandWeapon(world);
-  const base = main?.stats ?? emptyWeaponStats();
+  const base = main.stats;
   if (!off) return { ...base };
   return {
     ...base,
@@ -340,8 +366,8 @@ export function getHitDamageBreakdown(world: WorldState): {
 } {
   const main = getEquipped(world);
   const gear = Object.values(world.equipment);
-  const agg = aggregateCombatElements(main, gear);
   const physical = getCombatWeaponStats(world).damage;
+  const agg = aggregateCombatElements(main, gear, physical);
   return {
     physical,
     elemental: agg.totalElementDamage,
@@ -358,21 +384,28 @@ function clearIncompatibleOffhand(world: WorldState, main: ItemInstance | null):
   return true;
 }
 
-function gearTotals(world: WorldState): {
+/** Totales de gear: speed/element se suman en % y luego se aplican una vez. */
+export function gearTotals(world: WorldState): {
   armor: number;
+  /** Factor final = 1 + suma((mult-1)). */
   moveSpeedMult: number;
+  /** Suma de puntos porcentuales de velocidad (p.ej. 5 = +5%). */
+  moveSpeedBonusPct: number;
   maxHpBonus: number;
 } {
   let armor = 0;
-  let moveSpeedMult = 1;
+  let speedPct = 0;
   let maxHpBonus = 0;
   for (const item of Object.values(world.equipment)) {
     if (!item) continue;
     armor += item.stats.armor;
-    moveSpeedMult *= item.stats.moveSpeedMult;
+    // moveSpeedMult 1.04 → +4%; 0.92 → −8%. Se suman, no se multiplican en cadena.
+    speedPct += (item.stats.moveSpeedMult - 1) * 100;
     maxHpBonus += item.stats.maxHpBonus;
   }
-  return { armor, moveSpeedMult, maxHpBonus };
+  const moveSpeedBonusPct = Math.round(speedPct * 10) / 10;
+  const moveSpeedMult = Math.max(0.55, 1 + speedPct / 100);
+  return { armor, moveSpeedMult, moveSpeedBonusPct, maxHpBonus };
 }
 
 /** Recalcula movimiento / maxHp del jugador según core + gear. */
@@ -560,6 +593,10 @@ export function isTwoHanded(weapon: ItemInstance | null): boolean {
   if (weapon.kind === "axe") {
     return (weapon.params as AxeParams).haftLength >= 0.72;
   }
+  if (weapon.kind === "club") {
+    const p = weapon.params as ClubParams;
+    return p.subtype !== "nunchaku" && p.length >= 0.95;
+  }
   if (weapon.kind === "sword") {
     const p = weapon.params as SwordParams;
     // Solo mandobles claros (ancho + largo); el resto es 1H
@@ -573,9 +610,10 @@ export function hasShield(world: WorldState): boolean {
 }
 
 function pickCombatAnim(world: WorldState, weapon: ItemInstance | null): CombatAnimKind {
-  if (weapon?.kind === "bow") return "bow";
-  if (weapon?.kind === "crossbow") return "crossbow";
-  if (weapon?.kind === "throw") return "throw";
+  if (!weapon) return "slash"; // puños / garras
+  if (weapon.kind === "bow") return "bow";
+  if (weapon.kind === "crossbow") return "crossbow";
+  if (weapon.kind === "throw") return "throw";
   if (isTwoHanded(weapon)) return "twohand";
   if (getOffhandWeapon(world)) return "dualR";
   return "slash";
@@ -603,11 +641,18 @@ function chargeKindForWeapon(weapon: ItemInstance | null): ChargeKind {
     const h = (weapon.params as AxeParams).headStyle;
     return h === "double" ? "arc" : "slam";
   }
+  if (weapon.kind === "club") {
+    const p = weapon.params as ClubParams;
+    if (p.subtype === "nunchaku") return "arc";
+    if (p.subtype === "scissors") return "thrust";
+    if (p.subtype === "pan" || p.subtype === "crowbar" || p.subtype === "pipe") return "slam";
+    return "thrust";
+  }
   if (weapon.kind === "sword") {
     const blade = (weapon.params as SwordParams).bladeType;
-    if (blade === "curved") return "arc";
+    if (blade === "curved" || blade === "katana" || blade === "saber") return "arc";
     if (blade === "wide") return "slam";
-    return "thrust";
+    return "thrust"; // straight / foil
   }
   return "punch";
 }
@@ -652,7 +697,9 @@ function spawnPlayerProjectile(world: WorldState, weapon: ItemInstance, charged:
 
   const dmgMult = charged ? (weapon.kind === "crossbow" ? 2.1 : weapon.kind === "bow" ? 1.7 : 1.6) : 1;
   const life = range / speed;
-  const elem = aggregateCombatElements(weapon, Object.values(world.equipment)).totalElementDamage;
+  const phys = stats.damage;
+  const elem = aggregateCombatElements(weapon, Object.values(world.equipment), phys)
+    .totalElementDamage;
   world.projectiles.push({
     id: nextId("proj"),
     pos: { x: player.pos.x + dir.x * 0.55, y: player.pos.y + dir.y * 0.55 },
@@ -915,17 +962,24 @@ function resolveSlashHit(world: WorldState): void {
   const kind = world.chargeAttack ? world.chargeKind : "none";
   const reachBonus =
     kind === "thrust"
-      ? 0.65
+      ? 0.35
       : kind === "arc"
-        ? 0.85
+        ? 0.25
         : kind === "throw"
-          ? 1.1
+          ? 0.4
           : kind === "slam"
-            ? 0.25
+            ? 0.15
             : kind === "punch"
-              ? 0.15
+              ? 0.1
               : 0;
-  const reach = stats.reach + 0.55 + reachBonus;
+  // Alcance ≈ stats.reach del arma (+ poco padding); antes +0.55 hinchaba el hitbox.
+  const reach = stats.reach + 0.2 + reachBonus;
+  // Cono frontal (dot vs facing). Arc especial ≈ 360°; el resto no pega atrás.
+  const halfAngle =
+    kind === "arc" ? Math.PI : kind === "slam" ? 0.95 : kind === "thrust" ? 0.55 : 1.05;
+  const minDot = Math.cos(halfAngle);
+  const fx = -Math.sin(player.facing);
+  const fy = -Math.cos(player.facing);
   const dmgMult =
     kind === "slam"
       ? 2.1
@@ -969,12 +1023,24 @@ function resolveSlashHit(world: WorldState): void {
     if (!ai.alive || ai.role === "hunter") continue;
     const d = dist(player.pos, ai.pos);
     if (d < nearestD) nearestD = d;
-    if (d > reach) continue;
+    if (d > reach || d < 0.02) continue;
+    const toX = (ai.pos.x - player.pos.x) / d;
+    const toY = (ai.pos.y - player.pos.y) / d;
+    const facingDot = toX * fx + toY * fy;
+    if (facingDot < minDot) continue;
     {
       const hit = getHitDamageBreakdown(world);
       dealDamage(world, ai, outgoingDamage(player, hit.physical + hit.elemental) * dmgMult);
       if (offWeapon)
         dealDamage(world, ai, outgoingDamage(player, offWeapon.stats.damage) * dmgMult);
+      const woundP =
+        (weapon?.stats.woundChance ?? 0) ||
+        (!weapon ? getCombatWeaponStats(world).woundChance ?? 0 : 0);
+      if (woundP > 0 && Math.random() < woundP) {
+        ai.bleedTimer = Math.max(ai.bleedTimer, 3.5 + Math.random() * 2);
+        ai.bleedDps = Math.max(ai.bleedDps, 1.8 + player.core.strength * 0.04);
+        setToast(world, "¡Herida abierta!");
+      }
     }
     let kdx = ai.pos.x - player.pos.x;
     let kdy = ai.pos.y - player.pos.y;
@@ -1005,7 +1071,12 @@ function resolveSlashHit(world: WorldState): void {
   else if (kind === "slam") setToast(world, "Mazazo!");
   else if (kind === "throw" || kind === "shot") setToast(world, "Tiro especial!");
   else if (kind === "punch") setToast(world, "Embestida!");
-  else if (dual) setToast(world, "Doble golpe!");
+  else if (!weapon) {
+    const claws =
+      world.equipment.gloves &&
+      (world.equipment.gloves.params as { style?: string }).style === "claws";
+    setToast(world, claws ? "Zarpazo!" : "Puñetazo!");
+  } else if (dual) setToast(world, "Doble golpe!");
 }
 
 function spawnRole(world: WorldState, role: "hunter" | "bug"): void {
@@ -1138,6 +1209,23 @@ export function stepWorld(world: WorldState, dt: number, input: InputState): voi
   player.attackCooldown = Math.max(0, player.attackCooldown - dt);
   player.attackSwing = Math.max(0, player.attackSwing - dt);
   player.hurtTimer = Math.max(0, player.hurtTimer - dt);
+  // Sangrado (heridas abiertas)
+  const tickBleed = (a: Actor) => {
+    if (a.bleedTimer <= 0 || !a.alive) return;
+    a.bleedTimer = Math.max(0, a.bleedTimer - dt);
+    const dmg = a.bleedDps * dt;
+    if (dmg > 0) {
+      a.hp = Math.max(0, a.hp - dmg);
+      if (a.hp <= 0) {
+        a.alive = false;
+        a.hp = 0;
+        if (a.kind === "ai") a.deathTimer = AI_CORPSE_TIME;
+      }
+    }
+    if (a.bleedTimer <= 0) a.bleedDps = 0;
+  };
+  tickBleed(player);
+  for (const ai of world.ais) tickBleed(ai);
   if (player.attackSwing > 0 && player.attackSwing <= Math.max(0.05, world.attackSwingMax) * 0.55) {
     resolveSlashHit(world);
   }
@@ -1194,7 +1282,7 @@ export function stepWorld(world: WorldState, dt: number, input: InputState): voi
       const ny = input.moveY / len;
       player.lastMoveX = nx;
       player.lastMoveY = ny;
-      const sprintMult = player.running ? 1.65 : 1;
+      const sprintMult = player.running ? 1.5 : 1;
       const crouchMult = player.crouching ? 0.5 : 1;
       const step = player.speed * sprintMult * crouchMult * dt;
       player.pos.x += nx * step;

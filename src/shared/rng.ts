@@ -1,6 +1,10 @@
 import type { Rarity } from "./types";
 
-/** Orden de rareza (bajo → alto). */
+/**
+ * Orden de rareza (bajo → alto).
+ * Gates/loot random: niveles 1–8 (vulgar…legendary).
+ * Mythic (9) = solo ítems fijos / unique / easter eggs — no sale de `pickRarity`.
+ */
 export const RARITIES: readonly Rarity[] = [
   "vulgar",
   "common",
@@ -47,9 +51,9 @@ export function rngFromSeed(seed: number): () => number {
 }
 
 /**
- * Pesos acumulados — mythic casi nunca.
+ * Pesos acumulados — solo hasta legendary (mythic no entra al loot random).
  * vulgar 18%, common 28%, regular 20%, uncommon 16%, rare 9%,
- * exceptional 5%, epic 2.5%, legendary 1.2%, mythic 0.3%
+ * exceptional 5%, epic 2.5%, legendary 1.5%
  */
 const RARITY_CDF: { at: number; rarity: Rarity }[] = [
   { at: 0.18, rarity: "vulgar" },
@@ -59,30 +63,33 @@ const RARITY_CDF: { at: number; rarity: Rarity }[] = [
   { at: 0.91, rarity: "rare" },
   { at: 0.96, rarity: "exceptional" },
   { at: 0.985, rarity: "epic" },
-  { at: 0.997, rarity: "legendary" },
-  { at: 1, rarity: "mythic" },
+  { at: 1, rarity: "legendary" },
 ];
 
+/** Rareza procedural del loot (1–8). Nunca mythic. */
 export function pickRarity(r: () => number): Rarity {
   const n = r();
   for (const row of RARITY_CDF) {
     if (n < row.at) return row.rarity;
   }
-  return "mythic";
+  return "legendary";
 }
 
-/** Multiplicador de stats. Cada escalón de rareza suma un bonus más claro. */
+/**
+ * Escala de magnitud de stats/bonus por rareza (create*Item / rollElement).
+ * vulgar 0.82 … mythic 4.2 — cuánto “pesa” cada bonus, no cuántos hay.
+ */
 export function rarityMult(rarity: Rarity): number {
   const table: Record<Rarity, number> = {
-    vulgar: 0.82,
+    vulgar: 0.95,
     common: 1,
-    regular: 1.15,
-    uncommon: 1.35,
-    rare: 1.65,
-    exceptional: 2.05,
-    epic: 2.6,
-    legendary: 3.3,
-    mythic: 4.2,
+    regular: 1.03,
+    uncommon: 1.07,
+    rare: 1.1,
+    exceptional: 1.15,
+    epic: 1.25,
+    legendary: 1.5,
+    mythic: 2,
   };
   return table[rarity];
 }

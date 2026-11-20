@@ -5,6 +5,7 @@ import type { WorldState } from "../sim/world";
 import {
   AI_CORPSE_TIME,
   AI_DEATH_ANIM,
+  getCombatWeaponStats,
   getHitDamageBreakdown,
   isTwoHanded,
   SLASH_DURATION,
@@ -185,6 +186,29 @@ export async function createRenderer(container: HTMLElement, mapSize = 180): Pro
   hero.root.rotation.y = Math.PI;
   playerMesh.add(hero.root);
 
+  // Pool de cazadores lookalike: cloneSkinned es caro; reciclar evita hitch al matar/respawn.
+  const lookalikePool: AiBodyHandle[] = [];
+  for (let i = 0; i < 10; i++) {
+    const h = makeLookalike();
+    h.root.visible = false;
+    lookalikePool.push(h);
+  }
+  function acquireLookalike(): AiBodyHandle {
+    // Preferir pool; cloneSkinned síncrono solo si se agotó (raro).
+    const h = lookalikePool.pop() ?? makeLookalike();
+    h.root.visible = true;
+    h.root.rotation.x = 0;
+    h.update(0, 0, false, 0, false, 0, 1);
+    return h;
+  }
+  function releaseLookalike(h: AiBodyHandle): void {
+    scene.remove(h.root);
+    h.root.visible = false;
+    h.root.rotation.x = 0;
+    h.update(0, 0, false, 0, false, 0, 1);
+    lookalikePool.push(h);
+  }
+
   let equipMeshes: EquipMeshes = emptyEquipMeshes();
   mountEquipMeshes(hero, equipMeshes);
 
@@ -204,7 +228,36 @@ export async function createRenderer(container: HTMLElement, mapSize = 180): Pro
   swingMesh.visible = false;
   playerMesh.add(swingMesh);
 
+  // FX elemental en el arco de corte
+  const elemParts: { mesh: THREE.Mesh; life: number; vx: number; vy: number; vz: number }[] = [];
+  const elemGeo = new THREE.SphereGeometry(0.05, 6, 6);
+  function spawnElemBurst(color: number, count: number): void {
+    for (let i = 0; i < count; i++) {
+      const mat = new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.85,
+        depthWrite: false,
+      });
+      const mesh = new THREE.Mesh(elemGeo, mat);
+      mesh.position.set(
+        (Math.random() - 0.5) * 0.6,
+        0.55 + Math.random() * 0.5,
+        0.2 + Math.random() * 0.5,
+      );
+      playerMesh.add(mesh);
+      elemParts.push({
+        mesh,
+        life: 0.28 + Math.random() * 0.22,
+        vx: (Math.random() - 0.5) * 2.2,
+        vy: 0.6 + Math.random() * 1.4,
+        vz: 0.4 + Math.random() * 1.6,
+      });
+    }
+  }
+
   let shake = 0;
+  let lastElemBurst = false;
   let lastSync = performance.now();
 
   const aiMeshes = new Map<string, AiBodyHandle>();
@@ -215,7 +268,7 @@ export async function createRenderer(container: HTMLElement, mapSize = 180): Pro
   const projectileMeshes = new Map<string, THREE.Group>();
   let equippedKey = "";
   const AI_SWING = 0.28;
-  /** Máx. meshes de loot nuevos por frame (evita hitch al matar). */
+  /** Máx. meshes de loot nuevos por frame (evita hitch al matar: buildItemMesh+canvas). */
   const LOOT_BUILDS_PER_FRAME = 1;
 
   const coinGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.04, 12);
@@ -243,6 +296,8 @@ export async function createRenderer(container: HTMLElement, mapSize = 180): Pro
     renderer.setSize(w, h, false);
   }
 
+  const aiIsBug = new Map<string, boolean>();
+
   function ensureAi(id: string, bug: boolean): AiBodyHandle {
     let h = aiMeshes.get(id);
     if (!h) {
@@ -250,10 +305,11 @@ export async function createRenderer(container: HTMLElement, mapSize = 180): Pro
         h = createAiBody(0x3d6b32);
         h.root.scale.setScalar(0.62);
       } else {
-        h = makeLookalike();
+        h = acquireLookalike();
       }
       scene.add(h.root);
       aiMeshes.set(id, h);
+      aiIsBug.set(id, bug);
     }
     return h;
   }
@@ -338,16 +394,39 @@ export async function createRenderer(container: HTMLElement, mapSize = 180): Pro
       swingMesh.visible = showArc && u > 0.16 && u < 0.72;
       const trailEl = getHitDamageBreakdown(world).trailElement;
       swingMat.color.setHex(trailEl ? ELEMENT_COLORS[trailEl] : 0xe8dcc8);
-      swingMat.opacity = 0.03 + mid * (trailEl ? 0.32 : 0.2) * Math.sin(arcT * Math.PI);
-      swingMesh.scale.setScalar(0.88 + arcT * 0.22);
-      // Arco diagonal alineado al corte (variante)
-      const v = world.slashVariant % 3;
+      swingMat.opacity = 0.04 + mid * (trailEl ? 0.55 : 0.2) * Math.sin(arcT * Math.PI);
+      // Escala del arco ≈ alcance real del golpe (stats.reach)
+      const hitReach = Math.max(0.55, getCombatWeaponStats(world).reach);
+      swingMesh.scale.setScalar(hitReach * ((trailEl ? 1.05 : 0.92) + arcT * 0.12));
+      const v = world.slashVariant % 4;
       const baseZ = v === 1 ? 0.55 : v === 2 ? -0.1 : -0.55;
       const sweep = v === 1 ? -1.15 : v === 2 ? 0.35 : 1.2;
       swingMesh.rotation.z = baseZ + arcT * sweep;
-      if (u > 0.28 && u < 0.42) shake = 0.12;
+      if (trailEl && cut && !lastElemBurst) {
+        spawnElemBurst(ELEMENT_COLORS[trailEl], 7);
+        lastElemBurst = true;
+      }
+      if (!cut) lastElemBurst = false;
+      // Sin sacudida en especial (evita salto de cámara); normal muy suave
+      if (u > 0.28 && u < 0.42 && world.chargeKind === "none") shake = 0.045;
     } else {
       swingMesh.visible = false;
+      lastElemBurst = false;
+    }
+    for (let i = elemParts.length - 1; i >= 0; i--) {
+      const pfx = elemParts[i]!;
+      pfx.life -= dt;
+      pfx.mesh.position.x += pfx.vx * dt;
+      pfx.mesh.position.y += pfx.vy * dt;
+      pfx.mesh.position.z += pfx.vz * dt;
+      pfx.vy -= 2.5 * dt;
+      const mat = pfx.mesh.material as THREE.MeshBasicMaterial;
+      mat.opacity = Math.max(0, pfx.life * 2.5);
+      if (pfx.life <= 0) {
+        playerMesh.remove(pfx.mesh);
+        mat.dispose();
+        elemParts.splice(i, 1);
+      }
     }
     const wpn = world.equipment.weapon;
     const off = world.equipment.offhand;
@@ -362,7 +441,9 @@ export async function createRenderer(container: HTMLElement, mapSize = 180): Pro
             : off?.kind === "shield"
               ? "block"
               : "onehand";
-    hero.update(dt, p.walkPhase, p.moving, swinging, p.running, stance, world.blocking);
+    // Escala anim walk/run: 1 ≈ speed base ~3.1 m/s (10 * MOVE_SPEED_PER_STAT).
+    const locoScale = Math.max(0.55, Math.min(1.35, p.speed / 3.1));
+    hero.update(dt, p.walkPhase, p.moving, swinging, p.running, stance, world.blocking, locoScale);
 
     shake = Math.max(0, shake - 0.016);
     const camTarget = new THREE.Vector3(p.pos.x, 0.9 + p.height * 0.45, p.pos.y);
@@ -393,9 +474,15 @@ export async function createRenderer(container: HTMLElement, mapSize = 180): Pro
     }
     for (const [id, body] of aiMeshes) {
       if (!presentIds.has(id)) {
-        scene.remove(body.root);
-        body.dispose();
+        if (aiIsBug.get(id)) {
+          scene.remove(body.root);
+          body.dispose();
+        } else {
+          // Cazador: devolver al pool (no dispose/clone en el kill/respawn)
+          releaseLookalike(body);
+        }
         aiMeshes.delete(id);
+        aiIsBug.delete(id);
       }
     }
 

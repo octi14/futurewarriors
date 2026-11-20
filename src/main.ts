@@ -19,7 +19,7 @@ import { createRenderer } from "./render/scene";
 import { bindHud } from "./render/hud";
 
 const app = document.getElementById("app")!;
-const world = createWorld({ mapSize: 80, aiCount: 1, bugCount: 100 });
+const world = createWorld({ mapSize: 80, aiCount: 1, bugCount: 40 });
 const hud = bindHud({
   onEquipBag: (id) => equipFromBag(world, id),
   onMoveBag: (id, x, y) => moveBagItemTo(world, id, x, y),

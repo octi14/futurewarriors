@@ -4,7 +4,8 @@ export type Rarity = "vulgar" | "common" | "regular" | "uncommon" | "rare" | "ex
 
 export type SwordParams = {
   seed: number;
-  bladeType: "straight" | "curved" | "wide"; //ideas: katana, lightsaber, esgrima.
+  /** katana=curva fina, saber=hoja de energía, foil=florete de esgrima. */
+  bladeType: "straight" | "curved" | "wide" | "katana" | "saber" | "foil";
   bladeLength: number;
   bladeWidth: number;
   guardSpan: number;
@@ -34,9 +35,27 @@ export type AxeParams = {
 
 export type ThrowParams = {
   seed: number;
-  subtype: "throwingAxe" | "throwingDagger" | "shuriken" | "javelin"; 
-  /* ideas: molotov, gas lacrimógeno, bazuka (legendary+)*/
+  subtype:
+    | "throwingAxe"
+    | "throwingDagger"
+    | "shuriken"
+    | "javelin"
+    | "slingshot"
+    | "boleadora"
+    | "molotov"
+    | "tearGas"
+    | "bazooka";
   size: number;
+  metalHue: number;
+  rarity: Rarity;
+};
+
+/** Armas improvisadas / cuerpo a cuerpo no-filo. */
+export type ClubParams = {
+  seed: number;
+  subtype: "bat" | "stick" | "pipe" | "crowbar" | "nunchaku" | "scissors" | "pan";
+  length: number;
+  thickness: number;
   metalHue: number;
   rarity: Rarity;
 };
@@ -60,9 +79,8 @@ export type CrossbowParams = {
 export type BootsParams = {
   seed: number;
   /**
-   * canvas=lona baja, sport=zapatilla deportiva, military=zapato/bota militar,
-   * combat=borcegos, trail=caña alta trekking, greaves/plate=metal.
-   * revisar si existen: sandal, loafer, oxford, riding, dress, work, ski, crocs. si no existen, agregar.
+   * canvas=lona, sport=deportiva, military/combat/trail=botas,
+   * greaves/plate=metal, crocs/sandal/loafer/oxford/riding/dress/work/ski=variantes.
    */
   style:
     | "canvas"
@@ -80,7 +98,8 @@ export type BootsParams = {
     | "dress"
     | "work"
     | "ski"
-    | "crocs";
+    | "crocs"
+    | "cleats";
   /** Tono del metal (plate/greaves); none en tela/cuero. */
   metalTone: "none" | "steel" | "gold" | "copper";
   height: number;
@@ -91,10 +110,28 @@ export type BootsParams = {
 
 export type ShieldParams = {
   seed: number;
-  shape: "round" | "heater" | "kite" | "buckler" | "targe" | "tower" | "pavise"; 
-  /*ideas: tapa de cubo de basura, pequeña puerta de metal, postigo de madera, escudo de plástico.*/
-  /** Madera, madera con herrajes, o metal macizo. */
-  material: "wood" | "reinforced" | "metal"; //ideas: plastic, chapa(traducir a inglés), acero, adamantium, obsidiana.
+  /** lid=tapa de cubo, door=puerta chica, shutter=postigo. */
+  shape:
+    | "round"
+    | "heater"
+    | "kite"
+    | "buckler"
+    | "targe"
+    | "tower"
+    | "pavise"
+    | "lid"
+    | "door"
+    | "shutter";
+  /** sheet=chapa, steel/adamantium/obsidian=metales especiales. */
+  material:
+    | "wood"
+    | "reinforced"
+    | "metal"
+    | "plastic"
+    | "sheet"
+    | "steel"
+    | "adamantium"
+    | "obsidian";
   width: number;
   height: number;
   boss: number;
@@ -129,11 +166,15 @@ export type HelmetParams = {
     | "bascinet"
     | "coif"
     | "crown"
-    | "bucket";
-    /* ideas: casco swat, máscara de gas, casco de la nasa, casco de max verstappen(mythical only), casco de f1 (uncommon+/rare+), orejeras (common-),
-    gorra común(nba, nfl, motorsport), mariachi (low quality pero very low drop rate), el chavo(low quality, very low drop rate) */
-  /** Cuero endurecido, bronce/latón, o acero. */
-  material: "leather" | "bronze" | "steel"; //incorporar: material de los cascos de moto/carreras y otros que falten para construir todos los cascos bien.
+    | "bucket"
+    | "swat"
+    | "gasmask"
+    | "nasa"
+    | "f1"
+    | "earmuffs"
+    | "ballcap";
+  /** composite/polycarb = moto/racing/f1; easter eggs usan beret/cowboy/ballcap. */
+  material: "leather" | "bronze" | "steel" | "composite" | "polycarb";
   dome: number;
   brim: number;
   metalHue: number;
@@ -166,10 +207,12 @@ export type ArmorParams = {
     | "gambeson"
     | "hauberk"
     | "lamellar"
-    | "cuirass";
-    /** ideas: traje de swat(epic+), cota de malla de anillas real, campera de nieve, remeras históricas (remera del chavo del ocho,
-     * remeras de equipos de fútbol, musculosas de la nba, remeras de selecciones de fútbol, remeras genéricas, remeras de grupos de música, 
-     * remeras de escuderías de fórmula 1 */
+    | "cuirass"
+    | "swat"
+    | "snow"
+    | "jersey"
+    | "leatherJacket";
+  /** leatherJacket=campera de cuero; swat=epic+; snow=nieve; jersey=remera. */
   /** Manga: none=chaleco, short, long. */
   sleeves: "none" | "short" | "long";
   /**
@@ -219,7 +262,9 @@ export type PantsParams = {
     | "chaps"
     | "kilt"
     | "breeches"
-    | "fatigues"; //ideas: pantalon de armadura, pantalón de fútbol
+    | "fatigues"
+    | "football"
+    | "armored";
   length: number;
   hue: number;
   rarity: Rarity;
@@ -236,10 +281,18 @@ export type PantsParams = {
 
 export type GlovesParams = {
   seed: number;
-  style: "cloth" | "leather" | "gauntlet" | "wraps" | "mittens" | "bracers";
-  /* estilo: cloth=tejido, leather=cuero, gauntlet=guante de batalla, wraps=guantes de cuero, mittens=guantes de punto,
-   bracers=brazaletes */
-  /* ideas: guantes de boxeo, guantes de arquero de fútbol, guantes de limpieza de cocina/baño */
+  style:
+    | "cloth"
+    | "leather"
+    | "gauntlet"
+    | "wraps"
+    | "mittens"
+    | "bracers"
+    | "boxing"
+    | "keeper"
+    | "rubber"
+    | "claws";
+  /** claws: sin arma permiten pelear con garras + alta woundChance. */
   bulk: number;
   hue: number;
   rarity: Rarity;
@@ -257,8 +310,20 @@ export type BeltParams = {
 /** Stats unificados: armas llenan combate; gear llena bonuses. */
 export type RingParams = {
   seed: number;
-  style: "band" | "signet" | "gem" | "skull" | "braided"; //idea: que haya de plata/oro/platino/brillantes.
-  gem: "none" | "ruby" | "sapphire" | "emerald" | "diamond"; //ideas: topacio, amatista, obsidiana, jade, azabache.
+  style: "band" | "signet" | "gem" | "skull" | "braided";
+  gem:
+    | "none"
+    | "ruby"
+    | "sapphire"
+    | "emerald"
+    | "diamond"
+    | "topaz"
+    | "amethyst"
+    | "obsidian"
+    | "jade"
+    | "jet";
+  /** Tono del metal del aro (además de metalHue). */
+  metalKind: "silver" | "gold" | "platinum" | "bright";
   metalHue: number;
   rarity: Rarity;
 };
@@ -322,6 +387,7 @@ export type Equipment = Record<EquipSlotId, ItemInstance | null>;
 export type ItemKind =
   | "sword"
   | "axe"
+  | "club"
   | "throw"
   | "bow"
   | "crossbow"
@@ -338,6 +404,7 @@ export type ItemKind =
 export type ItemParams =
   | SwordParams
   | AxeParams
+  | ClubParams
   | ThrowParams
   | BowParams
   | CrossbowParams
@@ -417,6 +484,10 @@ export type Actor = {
   height: number;
   velY: number;
   crouching: boolean;
+  /** Segundos restantes de sangrado (herida abierta). */
+  bleedTimer: number;
+  /** Daño por segundo mientras sangra. */
+  bleedDps: number;
 };
 
 export type DamagePopup = {

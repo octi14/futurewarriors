@@ -34,6 +34,7 @@ export const BOOT_VISUAL = identity([
   "work",
   "ski",
   "crocs",
+  "cleats",
 ] as const satisfies readonly BootsParams["style"][]);
 
 export const ARMOR_VISUAL = identity([
@@ -56,6 +57,10 @@ export const ARMOR_VISUAL = identity([
   "hauberk",
   "lamellar",
   "cuirass",
+  "swat",
+  "snow",
+  "jersey",
+  "leatherJacket",
 ] as const satisfies readonly ArmorParams["style"][]);
 
 export const PANTS_VISUAL = identity([
@@ -70,6 +75,8 @@ export const PANTS_VISUAL = identity([
   "kilt",
   "breeches",
   "fatigues",
+  "football",
+  "armored",
 ] as const satisfies readonly PantsParams["style"][]);
 
 export const GLOVE_VISUAL = identity([
@@ -79,6 +86,10 @@ export const GLOVE_VISUAL = identity([
   "wraps",
   "mittens",
   "bracers",
+  "boxing",
+  "keeper",
+  "rubber",
+  "claws",
 ] as const satisfies readonly GlovesParams["style"][]);
 
 export const BELT_VISUAL = identity([
@@ -98,6 +109,9 @@ export const SHIELD_VISUAL = identity([
   "targe",
   "tower",
   "pavise",
+  "lid",
+  "door",
+  "shutter",
 ] as const satisfies readonly ShieldParams["shape"][]);
 
 /** @deprecated Ya no hay alias; se mantiene por compat. */
@@ -139,6 +153,7 @@ export function bootHeightClass(
     s === "canvas" ||
     s === "sport" ||
     s === "sneaker" ||
+    s === "cleats" ||
     s === "loafer" ||
     s === "oxford"
   )

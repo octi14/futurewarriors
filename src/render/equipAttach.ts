@@ -103,6 +103,7 @@ function weaponOffsetKey(w: ItemInstance): WeaponOffsetKey {
     const len = (w.params as { bladeLength?: number }).bladeLength ?? 1;
     return len < 0.545 ? "dagger" : "sword";
   }
+  if (w.kind === "club") return "axe";
   if (w.kind === "bow" || w.kind === "crossbow" || w.kind === "throw") return w.kind;
   return "sword";
 }
@@ -207,6 +208,7 @@ export function attachEquippedVisuals(
     w &&
     (w.kind === "sword" ||
       w.kind === "axe" ||
+      w.kind === "club" ||
       w.kind === "throw" ||
       w.kind === "bow" ||
       w.kind === "crossbow")
@@ -220,8 +222,10 @@ export function attachEquippedVisuals(
     mesh.position.set(off.x, off.y, off.z);
     if (w.kind === "bow") {
       mesh.rotation.set(bowRotation.x, bowRotation.y, bowRotation.z);
-    } else if (w.kind === "axe") {
-      const haft = (w.params as { haftLength?: number }).haftLength ?? 0.6;
+    } else if (w.kind === "axe" || w.kind === "club") {
+      const haft = (w.params as { haftLength?: number; length?: number }).haftLength
+        ?? (w.params as { length?: number }).length
+        ?? 0.6;
       const rot = haft < 0.545 ? smallAxeRotation : axeRotation;
       mesh.rotation.set(rot.x, rot.y, rot.z);
     } else {

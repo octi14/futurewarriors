@@ -17,35 +17,54 @@ export const ELEMENT_LABEL_ES: Record<ElementKind, string> = {
 
 const ELEMENTS: ElementKind[] = ["fire", "ice", "lightning", "poison"];
 
-/** Chance de que un arma/gear saque elemento según rareza. */
+/**
+ * Bonus elemental procedural (hoy: 0 o 1 bonus por ítem).
+ *
+ * Cuántos: a lo sumo UN elemento; si falla el roll → sin bonus.
+ * Chance (sube con rareza, t=0 vulgar … t=1 mythic):
+ *   - arma:  4% + t*35%   → ~4% vulgar … ~39% mythic
+ *   - gear:  2% + t*22%   → ~2% vulgar … ~24% mythic
+ * Magnitud (puntos % de daño físico, se SUMAN entre ítems):
+ *   (2..6) * rarityMult(rarity)  → ~1.6% vulgar … ~25% mythic
+ *
+ * Otros bonus (armor, speed%, HP, woundChance, etc.) se eligen en create*Item
+ * según style/tipo; rarityMult escala esos valores base.
+ */
 export function rollElement(
   r: () => number,
   rarity: Rarity,
   forWeapon: boolean,
 ): { element: ElementKind; elementDamage: number } | null {
   const t = rarityT(rarity);
+  // Chance de que el ítem traiga bonus elemental
   const chance = forWeapon ? 0.04 + t * 0.35 : 0.02 + t * 0.22;
   if (r() > chance) return null;
   const element = ELEMENTS[Math.floor(r() * ELEMENTS.length)]!;
-  const elementDamage = Math.round((2 + r() * 3) * rarityMult(rarity) * 10) / 10;
+  // Magnitud del bonus en % (aditivo entre piezas)
+  const elementDamage = Math.round((2 + r() * 4) * rarityMult(rarity) * 10) / 10;
   return { element, elementDamage };
 }
 
-/** Arma: un solo elemento. Suma elementDamage de todo el gear del mismo tipo + otros tipos aparte. */
+/**
+ * Arma: un solo elemento (trail). Los % elementales se SUMAN por tipo
+ * y luego se aplican al daño físico: dmgElem = physical * (pctSum/100).
+ */
 export function aggregateCombatElements(
   weapon: ItemInstance | null,
   gear: (ItemInstance | null)[],
+  physicalDamage = 0,
 ): {
-  /** Elemento que pinta la estela (el del arma, si hay). */
   trailElement: ElementKind | null;
-  /** Daño por elemento (arma + bonuses de gear). */
+  /** % sumados por elemento. */
+  byElementPct: Partial<Record<ElementKind, number>>;
+  /** Daño absoluto por elemento (sobre physical). */
   byElement: Partial<Record<ElementKind, number>>;
   totalElementDamage: number;
 } {
-  const byElement: Partial<Record<ElementKind, number>> = {};
-  const add = (el: ElementKind | null | undefined, dmg: number | undefined) => {
-    if (!el || !dmg) return;
-    byElement[el] = (byElement[el] ?? 0) + dmg;
+  const byElementPct: Partial<Record<ElementKind, number>> = {};
+  const add = (el: ElementKind | null | undefined, pct: number | undefined) => {
+    if (!el || !pct) return;
+    byElementPct[el] = (byElementPct[el] ?? 0) + pct;
   };
 
   let trailElement: ElementKind | null = null;
@@ -56,14 +75,18 @@ export function aggregateCombatElements(
 
   for (const item of gear) {
     if (!item || item === weapon) continue;
-    // Offhand arma: no pisa el trail del main; suma daño
     add(item.stats.element, item.stats.elementDamage);
   }
 
+  const byElement: Partial<Record<ElementKind, number>> = {};
   let totalElementDamage = 0;
-  for (const v of Object.values(byElement)) totalElementDamage += v ?? 0;
+  for (const [el, pct] of Object.entries(byElementPct) as [ElementKind, number][]) {
+    const dmg = Math.round(physicalDamage * (pct / 100) * 10) / 10;
+    byElement[el] = dmg;
+    totalElementDamage += dmg;
+  }
 
-  return { trailElement, byElement, totalElementDamage };
+  return { trailElement, byElementPct, byElement, totalElementDamage };
 }
 
 export function withElementStats(

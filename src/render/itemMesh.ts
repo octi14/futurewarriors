@@ -14,6 +14,7 @@ import type {
   BeltParams,
   BootsParams,
   BowParams,
+  ClubParams,
   CrossbowParams,
   GlovesParams,
   HelmetParams,
@@ -757,21 +758,38 @@ function buildShieldMesh(paramsIn: ShieldParams): THREE.Group {
   const g = new THREE.Group();
   const mat = params.material ?? "reinforced";
   const wood = makeWoodMat(params.metalHue, mat === "wood" ? 0.32 : 0.26);
-  const metal = makeMetalMat(params.metalHue, params.rarity, { polish: mat === "metal" ? 1.05 : 0.9 });
-  const face = mat === "metal" ? metal : wood;
+  const metal = makeMetalMat(params.metalHue, params.rarity, {
+    polish: mat === "metal" || mat === "steel" || mat === "adamantium" ? 1.05 : 0.9,
+  });
+  if (mat === "obsidian") metal.color.setHex(0x1a1028);
+  if (mat === "adamantium") metal.color.setHSL(0.55, 0.15, 0.62);
+  const plastic = new THREE.MeshStandardMaterial({
+    color: new THREE.Color().setHSL(params.metalHue, 0.45, 0.45),
+    roughness: 0.55,
+    metalness: 0.05,
+  });
+  const sheet = makeMetalMat(params.metalHue, params.rarity, { polish: 0.75 });
+  sheet.roughness = 0.55;
+  const isMetalish =
+    mat === "metal" || mat === "steel" || mat === "sheet" || mat === "adamantium" || mat === "obsidian";
+  const face =
+    mat === "plastic" ? plastic : isMetalish ? (mat === "sheet" ? sheet : metal) : wood;
   const sh = params.shape;
   let body: THREE.Mesh;
-  if (sh === "round" || sh === "buckler" || sh === "targe") {
-    const r = params.width * (sh === "buckler" ? 0.38 : sh === "targe" ? 0.48 : 0.55);
-    body = new THREE.Mesh(new THREE.CylinderGeometry(r, r, sh === "buckler" ? 0.05 : 0.06, 20), face);
-    body.rotation.x = Math.PI / 2;
-  } else if (sh === "kite" || sh === "tower") {
-    const h = params.height * (sh === "tower" ? 1.15 : 1);
-    const w = params.width * (sh === "tower" ? 0.55 : 0.7);
-    body = new THREE.Mesh(new THREE.BoxGeometry(w, h, sh === "tower" ? 0.08 : 0.06), face);
-  } else if (sh === "pavise") {
+  if (sh === "round" || sh === "buckler" || sh === "targe" || sh === "lid") {
+    const r = params.width * (sh === "buckler" ? 0.38 : sh === "targe" ? 0.48 : sh === "lid" ? 0.5 : 0.55);
     body = new THREE.Mesh(
-      new THREE.BoxGeometry(params.width * 0.85, params.height * 1.05, 0.09),
+      new THREE.CylinderGeometry(r, r, sh === "buckler" ? 0.05 : sh === "lid" ? 0.04 : 0.06, 20),
+      face,
+    );
+    body.rotation.x = Math.PI / 2;
+  } else if (sh === "kite" || sh === "tower" || sh === "door") {
+    const h = params.height * (sh === "tower" ? 1.15 : sh === "door" ? 1.2 : 1);
+    const w = params.width * (sh === "tower" ? 0.55 : sh === "door" ? 0.5 : 0.7);
+    body = new THREE.Mesh(new THREE.BoxGeometry(w, h, sh === "tower" || sh === "door" ? 0.08 : 0.06), face);
+  } else if (sh === "pavise" || sh === "shutter") {
+    body = new THREE.Mesh(
+      new THREE.BoxGeometry(params.width * (sh === "shutter" ? 0.7 : 0.85), params.height * 1.05, 0.09),
       face,
     );
   } else {
@@ -780,7 +798,7 @@ function buildShieldMesh(paramsIn: ShieldParams): THREE.Group {
   }
   g.add(body);
 
-  if (mat !== "metal") {
+  if (!isMetalish && mat !== "plastic") {
     // Tablas / veta
     for (const ox of [-0.22, 0, 0.22]) {
       const plank = new THREE.Mesh(
@@ -792,7 +810,7 @@ function buildShieldMesh(paramsIn: ShieldParams): THREE.Group {
     }
   }
 
-  if (mat === "reinforced" || mat === "metal") {
+  if (mat === "reinforced" || isMetalish) {
     const rim = new THREE.Mesh(
       new THREE.TorusGeometry(params.width * 0.42, mat === "metal" ? 0.016 : 0.012, 6, 20),
       makeEdgeMat(params.metalHue, params.rarity),
@@ -855,6 +873,12 @@ const HELM_LOOK: Record<HelmetParams["style"], HelmLook> = {
   coif: { dome: "wrap" },
   crown: { dome: "band", points: true },
   bucket: { dome: "bucket", slit: true },
+  swat: { dome: "round", visor: true, bars: true },
+  gasmask: { dome: "round", face: true, vents: true },
+  nasa: { dome: "round", face: true, visor: true },
+  f1: { dome: "tall", visor: true, face: true },
+  earmuffs: { dome: "band", ears: true },
+  ballcap: { dome: "round", peak: true },
 };
 
 function buildHelmetMesh(params: HelmetParams): THREE.Group {
@@ -870,7 +894,13 @@ function buildHelmetMesh(params: HelmetParams): THREE.Group {
             m.color.setHSL(0.09, 0.55, 0.42);
             return m;
           })()
-        : makeMetalMat(params.metalHue, params.rarity);
+        : material === "polycarb" || material === "composite"
+          ? new THREE.MeshStandardMaterial({
+              color: new THREE.Color().setHSL(params.metalHue, 0.35, material === "polycarb" ? 0.28 : 0.22),
+              roughness: material === "polycarb" ? 0.35 : 0.55,
+              metalness: material === "polycarb" ? 0.15 : 0.25,
+            })
+          : makeMetalMat(params.metalHue, params.rarity);
   const r = 0.14 + params.dome * 0.55;
   if (look.dome === "flat") {
     const disc = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.15, r * 1.15, r * 0.22, 16), metal);
@@ -984,6 +1014,104 @@ function buildHelmetMesh(params: HelmetParams): THREE.Group {
   return g;
 }
 
+function buildClubMesh(params: ClubParams): THREE.Group {
+  const g = new THREE.Group();
+  const wood = new THREE.MeshStandardMaterial({ color: 0x6b4423, roughness: 0.88, metalness: 0.02 });
+  const metal = makeMetalMat(params.metalHue, params.rarity, { polish: 0.9 });
+  const L = params.length;
+  const t = params.thickness;
+  if (params.subtype === "pan") {
+    const handle = new THREE.Mesh(
+      new THREE.CylinderGeometry(t * 0.45, t * 0.55, L * 0.55, 8),
+      metal,
+    );
+    handle.position.y = L * 0.28;
+    g.add(handle);
+    const pan = new THREE.Mesh(
+      new THREE.CylinderGeometry(L * 0.38, L * 0.42, t * 1.2, 16),
+      metal,
+    );
+    pan.position.y = L * 0.72;
+    g.add(pan);
+    const rim = new THREE.Mesh(
+      new THREE.TorusGeometry(L * 0.4, t * 0.35, 6, 16),
+      metal,
+    );
+    rim.rotation.x = Math.PI / 2;
+    rim.position.y = L * 0.78;
+    g.add(rim);
+  } else if (params.subtype === "scissors") {
+    const blade = (ang: number, sx: number) => {
+      const b = new THREE.Mesh(
+        new THREE.BoxGeometry(t * 1.2, L * 0.55, t * 0.35),
+        metal,
+      );
+      b.position.set(sx * t * 0.8, L * 0.55, 0);
+      b.rotation.z = ang;
+      g.add(b);
+    };
+    blade(0.22, 1);
+    blade(-0.22, -1);
+    const pivot = new THREE.Mesh(new THREE.SphereGeometry(t * 1.1, 8, 8), metal);
+    pivot.position.y = L * 0.28;
+    g.add(pivot);
+    const handle = (sx: number) => {
+      const h = new THREE.Mesh(
+        new THREE.TorusGeometry(t * 2.2, t * 0.45, 6, 10),
+        metal,
+      );
+      h.position.set(sx * t * 2.4, L * 0.08, 0);
+      h.rotation.y = Math.PI / 2;
+      g.add(h);
+    };
+    handle(-1);
+    handle(1);
+  } else if (params.subtype === "nunchaku") {
+    const stick = (oy: number) => {
+      const s = new THREE.Mesh(new THREE.CylinderGeometry(t * 0.7, t * 0.7, L * 0.42, 8), wood);
+      s.position.y = oy;
+      g.add(s);
+    };
+    stick(L * 0.22);
+    stick(L * 0.72);
+    const cord = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.008, 0.008, L * 0.18, 6),
+      new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.9 }),
+    );
+    cord.position.y = L * 0.47;
+    g.add(cord);
+  } else if (params.subtype === "pipe" || params.subtype === "crowbar") {
+    const shaft = new THREE.Mesh(new THREE.CylinderGeometry(t, t * 0.95, L, 10), metal);
+    shaft.position.y = L / 2;
+    g.add(shaft);
+    if (params.subtype === "crowbar") {
+      const hook = new THREE.Mesh(new THREE.TorusGeometry(t * 2.2, t * 0.55, 8, 12, Math.PI), metal);
+      hook.rotation.z = Math.PI / 2;
+      hook.position.set(0, L * 0.92, t * 1.2);
+      g.add(hook);
+    }
+  } else if (params.subtype === "bat") {
+    const barrel = new THREE.Mesh(
+      new THREE.CylinderGeometry(t * 1.6, t * 0.7, L * 0.72, 10),
+      wood,
+    );
+    barrel.position.y = L * 0.58;
+    g.add(barrel);
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(t * 0.55, t * 0.6, L * 0.32, 8), wood);
+    handle.position.y = L * 0.16;
+    g.add(handle);
+    const knob = new THREE.Mesh(new THREE.SphereGeometry(t * 0.75, 8, 8), wood);
+    knob.position.y = 0.02;
+    g.add(knob);
+  } else {
+    const stick = new THREE.Mesh(new THREE.CylinderGeometry(t * 0.9, t * 1.1, L, 8), wood);
+    stick.position.y = L / 2;
+    g.add(stick);
+  }
+  g.rotation.x = -Math.PI / 2;
+  return g;
+}
+
 function buildAxeMesh(params: AxeParams): THREE.Group {
   const g = new THREE.Group();
   const metal = makeMetalMat(params.metalHue, params.rarity, { polish: 1.1 });
@@ -1054,6 +1182,67 @@ function buildThrowMesh(params: ThrowParams): THREE.Group {
     const grip = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.035, 0.14), wood);
     grip.position.z = -0.12;
     g.add(grip);
+  } else if (params.subtype === "slingshot") {
+    const fork = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.04, 0.08), wood);
+    fork.position.z = 0.08;
+    g.add(fork);
+    for (const sx of [-1, 1]) {
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.015, 0.14, 6), wood);
+      arm.rotation.z = sx * 0.45;
+      arm.position.set(sx * 0.06, 0, 0.16);
+      g.add(arm);
+    }
+    const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, 0.16, 6), wood);
+    handle.rotation.x = Math.PI / 2;
+    handle.position.z = -0.06;
+    g.add(handle);
+    const band = new THREE.Mesh(
+      new THREE.TorusGeometry(0.07, 0.008, 4, 10, Math.PI),
+      new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.85 }),
+    );
+    band.rotation.y = Math.PI / 2;
+    band.position.z = 0.2;
+    g.add(band);
+  } else if (params.subtype === "boleadora") {
+    const cord = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.008, 0.008, 0.55 + s * 0.2, 6),
+      new THREE.MeshStandardMaterial({ color: 0x4a3420, roughness: 0.9 }),
+    );
+    cord.rotation.x = Math.PI / 2;
+    g.add(cord);
+    for (const z of [-0.28 - s * 0.08, 0.28 + s * 0.08]) {
+      const ball = new THREE.Mesh(new THREE.SphereGeometry(0.045 + s * 0.02, 8, 8), metal);
+      ball.position.z = z;
+      g.add(ball);
+    }
+  } else if (params.subtype === "molotov") {
+    const bottle = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.04, 0.045, 0.18 + s * 0.08, 8),
+      new THREE.MeshStandardMaterial({ color: 0x2a5a2a, transparent: true, opacity: 0.75, roughness: 0.2 }),
+    );
+    bottle.rotation.x = Math.PI / 2;
+    g.add(bottle);
+    const rag = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.012, 0.02, 0.1, 6),
+      new THREE.MeshStandardMaterial({ color: 0xd8c090, roughness: 0.9 }),
+    );
+    rag.rotation.x = Math.PI / 2;
+    rag.position.z = 0.14;
+    g.add(rag);
+  } else if (params.subtype === "tearGas") {
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.04, 0.16, 10), metal);
+    can.rotation.x = Math.PI / 2;
+    g.add(can);
+    const pin = new THREE.Mesh(new THREE.TorusGeometry(0.025, 0.006, 4, 8), metal);
+    pin.position.z = 0.1;
+    g.add(pin);
+  } else if (params.subtype === "bazooka") {
+    const tube = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.85 + s * 0.3, 12), metal);
+    tube.rotation.x = Math.PI / 2;
+    g.add(tube);
+    const sight = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.06, 0.08), metal);
+    sight.position.set(0, 0.08, 0.1);
+    g.add(sight);
   } else {
     const haft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.35, 6), wood);
     haft.rotation.x = Math.PI / 2;
@@ -1376,6 +1565,14 @@ function buildBeltMesh(paramsIn: BeltParams): THREE.Group {
 function buildRingMesh(params: RingParams): THREE.Group {
   const g = new THREE.Group();
   const metal = makeMetalMat(params.metalHue, params.rarity, { polish: 1.1 });
+  const kind = params.metalKind ?? "silver";
+  if (kind === "gold") metal.color.setHSL(0.12, 0.75, 0.48);
+  else if (kind === "platinum") metal.color.setHSL(0.58, 0.08, 0.72);
+  else if (kind === "bright") {
+    metal.color.setHSL(params.metalHue, 0.55, 0.62);
+    metal.metalness = 1;
+    metal.roughness = 0.12;
+  } else metal.color.setHSL(0.55, 0.05, 0.68);
   const band = new THREE.Mesh(new THREE.TorusGeometry(0.08, params.style === "braided" ? 0.02 : 0.014, 6, 16), metal);
   g.add(band);
   if (params.style === "signet" || params.style === "skull" || params.gem !== "none") {
@@ -1388,7 +1585,17 @@ function buildRingMesh(params: RingParams): THREE.Group {
             ? 0x1c7a3a
             : params.gem === "diamond"
               ? 0xe8f4ff
-              : 0xc8c8c8;
+              : params.gem === "topaz"
+                ? 0xd4a017
+                : params.gem === "amethyst"
+                  ? 0x6b2d8b
+                  : params.gem === "obsidian"
+                    ? 0x1a1020
+                    : params.gem === "jade"
+                      ? 0x2d8a5e
+                      : params.gem === "jet"
+                        ? 0x0a0a0a
+                        : 0xc8c8c8;
     const top = new THREE.Mesh(
       params.style === "skull"
         ? new THREE.SphereGeometry(0.035, 6, 5)
@@ -1431,6 +1638,9 @@ export function buildItemMesh(
   } else if (item.kind === "axe") {
     m = buildAxeMesh(item.params as AxeParams);
     m.scale.setScalar(0.65);
+  } else if (item.kind === "club") {
+    m = buildClubMesh(item.params as ClubParams);
+    m.scale.setScalar(0.7);
   } else if (item.kind === "throw") {
     m = buildThrowMesh(item.params as ThrowParams);
     m.scale.setScalar(0.85);

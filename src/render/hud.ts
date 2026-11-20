@@ -1,12 +1,15 @@
 import { rarityT } from "../shared/rng";
 import type { CoreStatId, EquipSlotId, ItemInstance, Rarity } from "../shared/types";
 import type { WorldState } from "../sim/world";
+import { ELEMENT_LABEL_ES, aggregateCombatElements } from "../shared/elements";
 import {
   BAG_COLS,
   BAG_ROWS,
   EQUIP_SLOT_LABELS,
+  gearTotals,
   getCombatWeaponStats,
   getEquipped,
+  getHitDamageBreakdown,
   getOffhandWeapon,
   statUpgradeCost,
 } from "../sim/world";
@@ -328,6 +331,20 @@ export function bindHud(handlers: {
 
   function rebuildChar(world: WorldState): void {
     const c = world.player.core;
+    const sp = world.statPurchases;
+    const g = gearTotals(world);
+    const hit = getHitDamageBreakdown(world);
+    const agg = aggregateCombatElements(
+      getEquipped(world),
+      Object.values(world.equipment),
+      hit.physical,
+    );
+    const elemRows = Object.entries(agg.byElementPct)
+      .map(
+        ([el, pct]) =>
+          `<div class="char-core-row"><span>${ELEMENT_LABEL_ES[el as keyof typeof ELEMENT_LABEL_ES]}</span><b>+${pct}% → ${agg.byElement[el as keyof typeof agg.byElement] ?? 0}</b></div>`,
+      )
+      .join("");
     const row = (stat: CoreStatId, label: string, val: number) => {
       const cost = statUpgradeCost(world, stat);
       const can = world.coins >= cost;
@@ -346,6 +363,22 @@ export function bindHud(handlers: {
         <div class="char-core-row"><span>Fuerza</span><b>${c.strength}</b></div>
         <div class="char-core-row"><span>Velocidad</span><b>${c.speed}</b></div>
         <div class="char-core-row"><span>Defensa</span><b>${c.defense}</b></div>
+      </div>
+      <div class="char-section">Comprados</div>
+      <div class="char-core">
+        <div class="char-core-row"><span>FUE +</span><b>${sp.strength}</b></div>
+        <div class="char-core-row"><span>VEL +</span><b>${sp.speed}</b></div>
+        <div class="char-core-row"><span>DEF +</span><b>${sp.defense}</b></div>
+      </div>
+      <div class="char-section">Bonos equipo</div>
+      <div class="char-core">
+        <div class="char-core-row"><span>Daño físico</span><b>${hit.physical}</b></div>
+        <div class="char-core-row"><span>Daño elemental</span><b>${hit.elemental}</b></div>
+        ${elemRows || `<div class="char-core-row"><span>Elementos</span><b>—</b></div>`}
+        <div class="char-core-row"><span>Vel. movimiento</span><b>${g.moveSpeedBonusPct >= 0 ? "+" : ""}${g.moveSpeedBonusPct}% (×${g.moveSpeedMult.toFixed(2)})</b></div>
+        <div class="char-core-row"><span>Armadura</span><b>${g.armor}</b></div>
+        <div class="char-core-row"><span>HP máx. bonus</span><b>+${g.maxHpBonus}</b></div>
+        <div class="char-core-row"><span>Vel. actual</span><b>${world.player.speed.toFixed(2)} m/s</b></div>
       </div>
       <div class="char-section">Entrenar</div>
       <div class="stat-shop">

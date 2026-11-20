@@ -32,6 +32,7 @@ export type HeroHandle = {
     running?: boolean,
     stance?: CombatAnimKind | "idle" | "onehand",
     activelyBlocking?: boolean,
+    locoScale?: number,
   ) => void;
   /**
    * Animación de combate.
@@ -528,13 +529,25 @@ export async function createHero(): Promise<HeroHandle> {
     }
 
     if (anim === "bow") {
-      upperArmL.rotation.x = armRest.uL.x - 0.85;
-      upperArmL.rotation.y = armRest.uL.y + 0.25;
-      const draw = Math.min(1, u / 0.45);
-      const release = u > 0.45 ? Math.min(1, (u - 0.45) / 0.25) : 0;
-      upperArmR.rotation.x = armRest.uR.x - 1.2 * draw + release * 0.9;
-      upperArmR.rotation.y = armRest.uR.y - 0.4 * draw;
-      if (lowerArmR) lowerArmR.rotation.x = armRest.lR.x - 0.7 * draw;
+      // Izquierda sostiene el arco; derecha tira la cuerda hacia la mejilla
+      upperArmL.rotation.x = armRest.uL.x - 1.05;
+      upperArmL.rotation.y = armRest.uL.y + 0.55;
+      upperArmL.rotation.z = armRest.uL.z + 0.15;
+      if (lowerArmL) lowerArmL.rotation.x = armRest.lL.x - 0.35;
+      const draw = Math.min(1, u / 0.5);
+      const release = u > 0.55 ? Math.min(1, (u - 0.55) / 0.2) : 0;
+      const hold = draw * (1 - release);
+      upperArmR.rotation.x = armRest.uR.x - 0.55 - 0.35 * hold;
+      upperArmR.rotation.y = armRest.uR.y - 0.85 * hold;
+      upperArmR.rotation.z = armRest.uR.z - 0.2 * hold;
+      if (lowerArmR) lowerArmR.rotation.x = armRest.lR.x - 1.15 * hold;
+      handGrip.rotation.x = handGripRest.rx - 0.15;
+      handGrip.rotation.y = handGripRest.ry + 0.1;
+      handGrip.position.set(
+        handGripRest.px - 0.02 * hold,
+        handGripRest.py + 0.02,
+        handGripRest.pz - 0.04 * hold,
+      );
       return;
     }
 
@@ -578,6 +591,13 @@ export async function createHero(): Promise<HeroHandle> {
       eUx = 0.55; eUy = 0.2; eUz = -0.45; eLx = 0.35;
       wSx = -0.55; wSy = 0.15; wSz = 0.75;
       wEx = 1.15; wEy = -0.25; wEz = -1.05;
+    } else if (kind === 3) {
+      // Thrust / estocada
+      sUx = -0.55; sUy = 0.15; sUz = 0.25; sLx = -0.85;
+      mUx = -1.15; mUy = 0.05; mUz = -0.05; mLx = -0.35;
+      eUx = -0.45; eUy = 0.1; eUz = -0.2; eLx = -0.15;
+      wSx = -0.15; wSy = 0.05; wSz = 0.35;
+      wEx = 0.55; wEy = -0.1; wEz = -0.45;
     } else if (kind === 1) {
       // Backhand: low-out → high-across
       sUx = -0.35; sUy = 0.75; sUz = -0.55; sLx = -0.55;
@@ -710,6 +730,7 @@ export async function createHero(): Promise<HeroHandle> {
     running = false,
     stance: CombatAnimKind | "idle" | "onehand" = "idle",
     activelyBlocking = false,
+    locoScale = 1,
   ): void {
     if (!activelyBlocking) lastBlocking = false;
     // Locomoción siempre (salvo swing de ataque que usa clips de slash)
@@ -725,8 +746,22 @@ export async function createHero(): Promise<HeroHandle> {
       idle.paused = false;
       walk.paused = false;
       run.paused = false;
+      // Speed base de la animación (1 = clip a tiempo real Mixamo).
+      // 0.72 walk / 0.78 run = más lentos de arranque; locoScale (desde m/s del player) los acelera.
+      walk.timeScale = 1.1 * locoScale;
+      run.timeScale = 1.05 * locoScale;
     }
     mixer.update(dt);
+    // Run: menos zancada de brazos, codos afuera (no hacia el torso)
+    if (!swinging && run.weight > 0.15 && upperArmR && upperArmL) {
+      const k = run.weight;
+      upperArmR.rotation.z = armRest.uR.z - 0.28 * k;
+      upperArmL.rotation.z = armRest.uL.z + 0.28 * k;
+      upperArmR.rotation.x = THREE.MathUtils.lerp(upperArmR.rotation.x, armRest.uR.x - 0.35, 0.35 * k);
+      upperArmL.rotation.x = THREE.MathUtils.lerp(upperArmL.rotation.x, armRest.uL.x - 0.35, 0.35 * k);
+      if (lowerArmR) lowerArmR.rotation.x = THREE.MathUtils.lerp(lowerArmR.rotation.x, armRest.lR.x - 0.25, 0.3 * k);
+      if (lowerArmL) lowerArmL.rotation.x = THREE.MathUtils.lerp(lowerArmL.rotation.x, armRest.lL.x - 0.25, 0.3 * k);
+    }
     // Overlay de brazos DESPUÉS del mixer (no congela piernas)
     if (swinging) {
       applyArmOverlay(lastAnim, lastU, false);

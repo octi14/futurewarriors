@@ -1,5 +1,13 @@
 import { rollElement, withElementStats } from "./elements";
 import { fillRarityAdj, pickRarity, rarityMult, rngFromSeed } from "./rng";
+import {
+  ARMOR_RARITY,
+  BOOT_RARITY,
+  HELMET_RARITY,
+  PANTS_RARITY,
+  GLOVE_RARITY,
+  pickStyleForRarity,
+} from "./rarityGates";
 import { EASTER_EGGS } from "./uniqueCatalog";
 import { createDaggerItem, createSwordItem, nextItemId, randomSwordSeed } from "./swords";
 import {
@@ -24,6 +32,7 @@ import type {
   BeltParams,
   BootsParams,
   BowParams,
+  ClubParams,
   CrossbowParams,
   GlovesParams,
   HelmetParams,
@@ -136,9 +145,14 @@ const crossbowAdj = fillRarityAdj(
 
 export function createBootsItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
-  const genre: BootsParams["style"] = pickStyle(r, BOOT_VISUAL);
-  const style = bootVisual(genre);
   const rarity = pickRarity(r);
+  const genre: BootsParams["style"] = pickStyleForRarity(
+    r,
+    Object.keys(BOOT_VISUAL) as BootsParams["style"][],
+    rarity,
+    BOOT_RARITY,
+  );
+  const style = bootVisual(genre);
   const metalRoll = r();
   const metalTone: BootsParams["metalTone"] =
     style === "plate" || style === "greaves"
@@ -161,17 +175,19 @@ export function createBootsItem(seed: number): ItemInstance {
             ? 0.12 + r() * 0.05
             : style === "canvas"
             ? 0.05 + r() * 0.02
-            : style === "sport" || style === "sneaker"
+            : style === "cleats" || style === "sport" || style === "sneaker"
               ? 0.18 + r() * 0.08
               : 0.16 + r() * 0.08,
     sole:
       style === "crocs"
         ? 0.07 + r() * 0.04
-        : style === "sport" || style === "sneaker"
-          ? 0.06 + r() * 0.05
-          : style === "canvas" || style === "sandal"
-            ? 0.04 + r() * 0.03
-            : 0.045 + r() * 0.05,
+        : style === "cleats"
+          ? 0.07 + r() * 0.04
+          : style === "sport" || style === "sneaker"
+            ? 0.06 + r() * 0.05
+            : style === "canvas" || style === "sandal"
+              ? 0.04 + r() * 0.03
+              : 0.045 + r() * 0.05,
     // Lona: negro / rojo Chuck / navy (como las refs)
     leatherHue:
       style === "canvas"
@@ -189,10 +205,12 @@ export function createBootsItem(seed: number): ItemInstance {
   const speed =
     genre === "crocs"
       ? 0.92 + r() * 0.04
-      : style === "canvas" || style === "sport"
-        ? 1.1 + r() * 0.12
-        : style === "combat" || style === "military"
-          ? 1.05 + r() * 0.08
+      : style === "cleats"
+        ? 1.12 + r() * 0.1
+        : style === "canvas" || style === "sport"
+          ? 1.1 + r() * 0.12
+          : style === "combat" || style === "military"
+            ? 1.05 + r() * 0.08
           : style === "trail"
             ? 1.08 + r() * 0.1
             : 1.02 + r() * 0.06;
@@ -206,6 +224,7 @@ export function createBootsItem(seed: number): ItemInstance {
     work: ["Botas de trabajo", "Botas de obra"],
     ski: ["Botas de nieve", "Botas de ski"],
     crocs: ["Crocs"],
+    cleats: ["Botines", "Botines de fútbol"],
   };
   const nouns =
     extraNouns[genre] ??
@@ -252,7 +271,21 @@ export function createShieldItem(seed: number): ItemInstance {
   const shape = shieldVisual(genre);
   const matRoll = r();
   const material: ShieldParams["material"] =
-    matRoll < 0.4 ? "wood" : matRoll < 0.75 ? "reinforced" : "metal";
+    matRoll < 0.28
+      ? "wood"
+      : matRoll < 0.48
+        ? "reinforced"
+        : matRoll < 0.62
+          ? "metal"
+          : matRoll < 0.74
+            ? "sheet"
+            : matRoll < 0.84
+              ? "plastic"
+              : matRoll < 0.92
+                ? "steel"
+                : matRoll < 0.97
+                  ? "obsidian"
+                  : "adamantium";
   const params: ShieldParams = {
     seed,
     shape: genre,
@@ -265,20 +298,44 @@ export function createShieldItem(seed: number): ItemInstance {
   };
   const m = rarityMult(rarity);
   const area = params.width * params.height;
-  const matArmor = material === "metal" ? 1.35 : material === "reinforced" ? 1.15 : 1;
+  const matArmor =
+    material === "adamantium"
+      ? 1.7
+      : material === "obsidian"
+        ? 1.45
+        : material === "steel" || material === "metal"
+          ? 1.35
+          : material === "sheet"
+            ? 1.2
+            : material === "reinforced"
+              ? 1.15
+              : material === "plastic"
+                ? 0.85
+                : 1;
   const shapeNouns: Partial<Record<ShieldParams["shape"], string[]>> = {
     buckler: ["Buckler", "Broquel chico"],
     targe: ["Targe", "Rodela"],
     tower: ["Escudo torre", "Escudo de infantería"],
     pavise: ["Pavés", "Escudo de asedio"],
+    lid: ["Tapa de cubo", "Tapa de basura"],
+    door: ["Puerta chica", "Puertita de metal"],
+    shutter: ["Postigo", "Postigo de madera"],
   };
   const nouns =
     shapeNouns[genre] ??
-    material === "metal"
-      ? ["Escudo de acero", "Broquel metálico", "Rodela de hierro"]
-      : material === "reinforced"
-        ? ["Escudo reforzado", "Broquel herrado", "Rodela claveteada"]
-        : ["Escudo de madera", "Broquel", "Rodela"];
+    (material === "plastic"
+      ? ["Escudo de plástico", "Broquel plástico"]
+      : material === "sheet"
+        ? ["Escudo de chapa", "Broquel de chapa"]
+        : material === "adamantium"
+          ? ["Escudo de adamantium"]
+          : material === "obsidian"
+            ? ["Escudo de obsidiana"]
+            : material === "steel" || material === "metal"
+              ? ["Escudo de acero", "Broquel metálico"]
+              : material === "reinforced"
+                ? ["Escudo reforzado", "Broquel herrado"]
+                : ["Escudo de madera", "Broquel"]);
   return {
     id: nextItemId(seed),
     kind: "shield",
@@ -288,12 +345,17 @@ export function createShieldItem(seed: number): ItemInstance {
     stats: {
       ...emptyCombat(),
       armor: Math.round((3 + area * 8) * matArmor * m * 10) / 10,
-      moveSpeedMult: Math.max(0.9, 1 - area * 0.08 - (material === "metal" ? 0.03 : 0)),
+      moveSpeedMult: Math.max(
+        0.88,
+        1 -
+          area * 0.08 -
+          (material === "metal" || material === "steel" || material === "adamantium" ? 0.03 : 0),
+      ),
       maxHpBonus: 0,
     },
     name: pickName(seed, rarity, shieldAdj, nouns),
     gridW: 2,
-    gridH: shape === "kite" ? 3 : 2,
+    gridH: shape === "kite" || shape === "door" ? 3 : 2,
   };
 }
 
@@ -326,24 +388,36 @@ const HELMET_GENRE: Record<
   coif: { nouns: ["Cofia", "Almófar"], cover: 0.8, cloth: true },
   crown: { nouns: ["Corona", "Diadema"], cover: 0.45 },
   bucket: { nouns: ["Yelmo de cubo", "Casco de cubo"], cover: 1.45, slow: true },
+  swat: { nouns: ["Casco SWAT", "Casco táctico"], cover: 1.4, hard: true, slow: true },
+  gasmask: { nouns: ["Máscara de gas", "Respirador"], cover: 1.1, hard: true },
+  nasa: { nouns: ["Casco espacial", "Casco NASA"], cover: 1.45, hard: true, slow: true },
+  f1: { nouns: ["Casco de F1", "Casco de motorsport"], cover: 1.35, hard: true },
+  earmuffs: { nouns: ["Orejeras", "Protectores auditivos"], cover: 0.45, cloth: true },
+  ballcap: { nouns: ["Gorra", "Gorra deportiva"], cover: 0.5, cloth: true },
 };
 
 export function createHelmetItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
   const styles = Object.keys(HELMET_GENRE) as HelmetParams["style"][];
-  const style = styles[Math.floor(r() * styles.length)]!;
+  const style = pickStyleForRarity(r, styles, rarity, HELMET_RARITY);
   const genre = HELMET_GENRE[style];
   const matRoll = r();
   const material: HelmetParams["material"] = genre.cloth
     ? "leather"
-    : genre.hard
-      ? "steel"
-      : matRoll < 0.22
-        ? "bronze"
-        : matRoll < 0.4
-          ? "leather"
-          : "steel";
+    : style === "moto" || style === "bike" || style === "racing" || style === "f1"
+      ? matRoll < 0.55
+        ? "polycarb"
+        : "composite"
+      : style === "nasa" || style === "swat"
+        ? "composite"
+        : genre.hard
+          ? "steel"
+          : matRoll < 0.22
+            ? "bronze"
+            : matRoll < 0.4
+              ? "leather"
+              : "steel";
   const params: HelmetParams = {
     seed,
     style,
@@ -354,7 +428,14 @@ export function createHelmetItem(seed: number): ItemInstance {
     rarity,
   };
   const m = rarityMult(rarity);
-  const matMul = material === "steel" ? 1.2 : material === "bronze" ? 1.05 : 0.85;
+  const matMul =
+    material === "steel" || material === "composite"
+      ? 1.2
+      : material === "polycarb"
+        ? 1.1
+        : material === "bronze"
+          ? 1.05
+          : 0.85;
   const nouns = genre.nouns;
   return {
     id: nextItemId(seed),
@@ -377,13 +458,24 @@ export function createHelmetItem(seed: number): ItemInstance {
 export function createArmorItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
-  const genre = pickStyle(r, ARMOR_VISUAL);
+  const genre = pickStyleForRarity(
+    r,
+    Object.keys(ARMOR_VISUAL) as ArmorParams["style"][],
+    rarity,
+    ARMOR_RARITY,
+  );
   const style = armorVisual(genre);
   const sleeves: ArmorParams["sleeves"] =
     style === "vest" ? "none" : r() < 0.42 ? "short" : "long";
   const finishRoll = r();
   let finish: ArmorParams["finish"] = "bare";
-  if (style === "hoodie" || style === "jacket" || style === "leather" || style === "padded") {
+  if (
+    style === "hoodie" ||
+    style === "jacket" ||
+    style === "leatherJacket" ||
+    style === "leather" ||
+    style === "padded"
+  ) {
     finish = finishRoll < 0.7 ? "painted" : "darkened";
   } else if (style === "vest") {
     finish = finishRoll < 0.5 ? "darkened" : "bare";
@@ -399,19 +491,29 @@ export function createArmorItem(seed: number): ItemInstance {
   } else {
     finish = finishRoll < 0.55 ? "bare" : finishRoll < 0.8 ? "darkened" : "polished";
   }
-  const casual = style === "hoodie" || style === "jacket";
+  const casual =
+    style === "hoodie" ||
+    style === "jacket" ||
+    style === "leatherJacket" ||
+    style === "snow" ||
+    style === "jersey";
   const hue = r();
   // --- Variedad de LOOT (solo probs / flags). El mesh se ajusta en skinnedGear.ts → armorClothesDecors / ARMOR_DECOR.
   // Subí el número de `r() < X` para que salga MÁS seguido; bajalo para que sea más raro.
   const hasAccent = casual ? r() < 0.22 : style === "vest" ? r() < 0.12 : r() < 0.08;
   const accentHue = hasAccent ? (hue + 0.18 + r() * 0.55) % 1 : undefined;
   // CAPUCHA: % de chance. Buzo 0.88 = casi siempre; campera 0.18 = raro. `false` = nunca.
-  const hood = style === "hoodie" ? r() < 0.88 : style === "jacket" ? r() < 0.18 : false;
+  const hood =
+    style === "hoodie" || style === "snow"
+      ? r() < 0.88
+      : style === "jacket"
+        ? r() < 0.18
+        : false;
   const zipRoll = r();
   // CIERRE: umbrales acumulativos 0..1 → "none" | "half" | "full".
   // Ej. jacket: <0.08 none, <0.35 half, resto full. Subí el primer corte → más sin cierre.
   const zipper: ArmorParams["zipper"] =
-    style === "jacket"
+    style === "jacket" || style === "leatherJacket"
       ? zipRoll < 0.08
         ? "none"
         : zipRoll < 0.35
@@ -480,7 +582,7 @@ export function createArmorItem(seed: number): ItemInstance {
   };
   const m = rarityMult(rarity);
   const armorBase =
-    style === "plate"
+    style === "plate" || style === "swat"
       ? 9 + params.bulk * 6
       : style === "scale"
         ? 7 + params.bulk * 5
@@ -492,9 +594,15 @@ export function createArmorItem(seed: number): ItemInstance {
               ? 3.5 + params.bulk * 2.5
               : style === "leather"
                 ? 3 + params.bulk * 2
-                : style === "jacket"
-                  ? 1.5 + params.bulk
-                  : 0.8 + params.bulk * 0.8;
+                : style === "snow"
+                  ? 2 + params.bulk
+                  : style === "leatherJacket"
+                  ? 2.8 + params.bulk * 1.6
+                  : style === "jacket"
+                    ? 1.5 + params.bulk
+                    : style === "jersey"
+                      ? 0.6 + params.bulk * 0.5
+                      : 0.8 + params.bulk * 0.8;
   const extraNouns: Partial<Record<ArmorParams["style"], string[]>> = {
     shirt: ["Remera", "Camisa"],
     tunic: ["Túnica", "Sayo"],
@@ -507,6 +615,10 @@ export function createArmorItem(seed: number): ItemInstance {
     hauberk: ["Hauberk", "Cota larga"],
     lamellar: ["Laminar", "Armadura laminar"],
     cuirass: ["Coraza", "Peto"],
+    swat: ["Traje SWAT", "Equipo táctico"],
+    snow: ["Campera de nieve", "Anorak"],
+    jersey: ["Remera", "Camiseta", "Jersey"],
+    leatherJacket: ["Campera de cuero", "Chaqueta de cuero"],
   };
   const nouns =
     extraNouns[genre] ??
@@ -535,7 +647,13 @@ export function createArmorItem(seed: number): ItemInstance {
       ...emptyCombat(),
       armor: Math.round(armorBase * m * 10) / 10,
       moveSpeedMult:
-        style === "plate" ? 0.9 : style === "scale" ? 0.94 : style === "chain" || style === "vest" ? 0.97 : 1,
+        style === "plate" || style === "swat"
+          ? 0.9
+          : style === "scale"
+            ? 0.94
+            : style === "chain" || style === "vest"
+              ? 0.97
+              : 1,
       maxHpBonus: Math.round((4 + params.bulk * 12) * m),
     },
     name: pickName(seed, rarity, armorAdj, nouns),
@@ -547,7 +665,12 @@ export function createArmorItem(seed: number): ItemInstance {
 export function createPantsItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
-  const genre = pickStyle(r, PANTS_VISUAL);
+  const genre = pickStyleForRarity(
+    r,
+    Object.keys(PANTS_VISUAL) as PantsParams["style"][],
+    rarity,
+    PANTS_RARITY,
+  );
   const style = pantsVisual(genre);
   const pockets =
     style === "cargo"
@@ -582,13 +705,25 @@ export function createPantsItem(seed: number): ItemInstance {
   };
   const m = rarityMult(rarity);
   const armor =
-    style === "plated" ? 4 : style === "leather" ? 2 : style === "cargo" ? 1 : style === "jeans" ? 0.8 : 0.5;
+    style === "plated" || style === "armored"
+      ? 4
+      : style === "leather"
+        ? 2
+        : style === "cargo"
+          ? 1
+          : style === "football"
+            ? 0.7
+            : style === "jeans"
+              ? 0.8
+              : 0.5;
   const extraNouns: Partial<Record<PantsParams["style"], string[]>> = {
     shorts: ["Shorts", "Bermudas"],
     chaps: ["Chaparreras", "Polainas"],
     kilt: ["Kilt", "Falda"],
     breeches: ["Calzones", "Bombachas"],
     fatigues: ["Fatigas", "Pantalón de faena"],
+    football: ["Pantalón de fútbol", "Shorts largos"],
+    armored: ["Pantalón de armadura", "Calzas blindadas"],
   };
   const nouns =
     extraNouns[genre] ??
@@ -613,7 +748,13 @@ export function createPantsItem(seed: number): ItemInstance {
       ...emptyCombat(),
       armor: Math.round(armor * m * 10) / 10,
       moveSpeedMult:
-        style === "plated" ? 0.95 : style === "jogger" ? 1.05 : style === "cloth" || style === "jeans" ? 1.02 : 1,
+        style === "plated" || style === "armored"
+          ? 0.95
+          : style === "jogger" || style === "football"
+            ? 1.05
+            : style === "cloth" || style === "jeans"
+              ? 1.02
+              : 1,
       maxHpBonus: Math.round(params.length * 6 * m),
     },
     name: pickName(seed, rarity, pantsAdj, nouns),
@@ -625,18 +766,30 @@ export function createPantsItem(seed: number): ItemInstance {
 export function createGlovesItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
-  const genre = pickStyle(r, GLOVE_VISUAL);
+  const genre = pickStyleForRarity(
+    r,
+    Object.keys(GLOVE_VISUAL) as GlovesParams["style"][],
+    rarity,
+    GLOVE_RARITY,
+  );
   const style = gloveVisual(genre);
   const params: GlovesParams = {
     seed,
     style: genre,
     // cloth/gauntlet un poco más abultados; leather más fino
     bulk:
-      style === "leather" ? 0.12 + r() * 0.35 : style === "cloth" ? 0.25 + r() * 0.4 : 0.35 + r() * 0.45,
+      style === "claws"
+        ? 0.2 + r() * 0.25
+        : style === "leather"
+          ? 0.12 + r() * 0.35
+          : style === "cloth"
+            ? 0.25 + r() * 0.4
+            : 0.35 + r() * 0.45,
     hue: r(),
     rarity,
   };
   const m = rarityMult(rarity);
+  const claws = style === "claws";
   return {
     id: nextItemId(seed),
     kind: "gloves",
@@ -644,13 +797,19 @@ export function createGlovesItem(seed: number): ItemInstance {
     seed,
     params,
     stats: {
-      damage: style === "gauntlet" ? Math.round(1.5 * m * 10) / 10 : 0,
-      reach: 0,
-      attackSpeed: style === "cloth" ? 1.06 : style === "leather" ? 1.03 : 0.98,
+      damage: claws
+        ? Math.round((4 + m * 3) * 10) / 10
+        : style === "gauntlet"
+          ? Math.round(1.5 * m * 10) / 10
+          : 0,
+      reach: claws ? 0.15 : 0,
+      attackSpeed: claws ? 1.25 : style === "cloth" ? 1.06 : style === "leather" ? 1.03 : 0.98,
       windup: 0,
       armor: style === "gauntlet" ? Math.round(2 * m * 10) / 10 : Math.round(0.5 * m * 10) / 10,
       moveSpeedMult: 1,
       maxHpBonus: 0,
+      // Garras: alta chance de herida abierta (solo se aplica en combate desarmado)
+      woundChance: claws ? Math.min(0.72, 0.42 + m * 0.08) : undefined,
     },
     name: pickName(
       seed,
@@ -664,7 +823,15 @@ export function createGlovesItem(seed: number): ItemInstance {
             ? ["Brazales", "Muñequeras"]
             : genre === "gauntlet"
               ? ["Guanteletes", "Manoplas de placas"]
-              : ["Guantes", "Guantes de cuero"],
+              : genre === "boxing"
+                ? ["Guantes de boxeo", "Guantes de combate"]
+                : genre === "keeper"
+                  ? ["Guantes de arquero", "Guantes de portero"]
+                  : genre === "rubber"
+                    ? ["Guantes de goma", "Guantes de limpieza"]
+                    : genre === "claws"
+                      ? ["Garras", "Garras afiladas"]
+                      : ["Guantes", "Guantes de cuero"],
     ),
     gridW: 2,
     gridH: 2,
@@ -772,6 +939,115 @@ export function createSmallAxeItem(seed: number): ItemInstance {
   return createAxeItem(seed, true);
 }
 
+const clubAdj = fillRarityAdj(
+  ["Astillado", "Torcido", "Oxidado"],
+  ["Sólido", "Pesado", "Reforzado"],
+  ["Templado", "Balanceado", "Letal"],
+  ["Destructor", "Colosal", "Infernal"],
+  { legendary: ["Titánico", "Cataclísmico"], mythic: ["Primordial", "Absoluto"] },
+);
+
+export function createClubItem(seed: number): ItemInstance {
+  const r = rngFromSeed(seed);
+  const rarity = pickRarity(r);
+  const subtypes: ClubParams["subtype"][] = [
+    "bat",
+    "stick",
+    "pipe",
+    "crowbar",
+    "nunchaku",
+    "scissors",
+    "pan",
+  ];
+  const subtype = subtypes[Math.floor(r() * subtypes.length)]!;
+  const params: ClubParams = {
+    seed,
+    subtype,
+    length:
+      subtype === "scissors"
+        ? 0.22 + r() * 0.08
+        : subtype === "pan"
+          ? 0.45 + r() * 0.12
+          : subtype === "nunchaku"
+            ? 0.55 + r() * 0.2
+            : subtype === "crowbar"
+              ? 0.7 + r() * 0.25
+              : 0.75 + r() * 0.45,
+    thickness:
+      subtype === "scissors"
+        ? 0.018 + r() * 0.01
+        : subtype === "pan"
+          ? 0.06 + r() * 0.03
+          : subtype === "pipe" || subtype === "crowbar"
+            ? 0.04 + r() * 0.025
+            : 0.035 + r() * 0.03,
+    metalHue: r(),
+    rarity,
+  };
+  const m = rarityMult(rarity);
+  const nouns: Record<ClubParams["subtype"], string[]> = {
+    bat: ["Bate", "Bate de béisbol"],
+    stick: ["Palo", "Garrote de madera"],
+    pipe: ["Caño", "Tubo de metal"],
+    crowbar: ["Gancho", "Palanca"],
+    nunchaku: ["Nunchaku", "Nunchakus"],
+    scissors: ["Tijeras", "Tijera"],
+    pan: ["Sartén", "Sartén de hierro"],
+  };
+  const dmgBase =
+    subtype === "scissors"
+      ? 3.5
+      : subtype === "pan"
+        ? 10
+        : subtype === "nunchaku"
+          ? 9
+          : subtype === "stick"
+            ? 8
+            : subtype === "bat"
+              ? 11
+              : 12;
+  const spd =
+    subtype === "scissors"
+      ? 1.85
+      : subtype === "pan"
+        ? 1.05
+        : subtype === "nunchaku"
+          ? 1.55
+          : subtype === "stick"
+            ? 1.35
+            : subtype === "bat"
+              ? 1.15
+              : 1.05;
+  const reach =
+    subtype === "scissors"
+      ? 0.42 + params.length * 0.35
+      : subtype === "pan"
+        ? 0.7 + params.length * 0.35
+        : 0.55 + params.length * 0.85;
+  return {
+    id: nextItemId(seed),
+    kind: "club",
+    equipSlot: "weapon",
+    seed,
+    params,
+    stats: withElementStats(
+      {
+        damage: Math.round((dmgBase + params.length * (subtype === "scissors" ? 4 : 10) + params.thickness * 40) * m * 10) / 10,
+        reach: Math.round(reach * 100) / 100,
+        attackSpeed: Math.round(spd * 100) / 100,
+        windup: Math.round((subtype === "scissors" ? 0.06 : 0.1 + params.length * 0.08) * 100) / 100,
+        armor: 0,
+        moveSpeedMult: 1,
+        maxHpBonus: 0,
+      },
+      rollElement(r, rarity, true),
+    ),
+    name: pickName(seed, rarity, clubAdj, nouns[subtype]),
+    gridW: 1,
+    gridH: subtype === "nunchaku" || subtype === "scissors" ? 2 : 3,
+  };
+}
+
 /** Armas cuerpo a cuerpo pequeñas (puñal / hacha corta), no arrojadizas ni a distancia. */
 export function isDualWieldable(item: ItemInstance): boolean {
   if (item.kind === "sword") {
@@ -781,6 +1057,10 @@ export function isDualWieldable(item: ItemInstance): boolean {
   if (item.kind === "axe") {
     const p = item.params as AxeParams;
     return p.haftLength <= 0.58 && p.headSize <= 0.22 && item.gridH <= 2;
+  }
+  if (item.kind === "club") {
+    const sub = (item.params as ClubParams).subtype;
+    return sub === "nunchaku" || sub === "scissors";
   }
   return false;
 }
@@ -793,8 +1073,14 @@ export function createThrowItem(seed: number): ItemInstance {
     "throwingDagger",
     "shuriken",
     "javelin",
+    "slingshot",
+    "boleadora",
+    "molotov",
+    "tearGas",
   ];
-  const subtype = subtypes[Math.floor(r() * subtypes.length)];
+  // Bazooka solo legendary (nivel 8)
+  let subtype = subtypes[Math.floor(r() * subtypes.length)]!;
+  if (rarity === "legendary" && r() < 0.35) subtype = "bazooka";
   const params: ThrowParams = {
     seed,
     subtype,
@@ -830,6 +1116,41 @@ export function createThrowItem(seed: number): ItemInstance {
     gridW = 1;
     gridH = 1;
     nouns = ["Shuriken", "Estrella"];
+  } else if (subtype === "slingshot") {
+    damage = (6 + params.size * 9) * m;
+    reach = 8 + params.size * 1.5;
+    attackSpeed = 1.7;
+    gridW = 1;
+    gridH = 2;
+    nouns = ["Gomera", "Resortera"];
+  } else if (subtype === "boleadora") {
+    damage = (8 + params.size * 12) * m;
+    reach = 6.5 + params.size * 1.3;
+    attackSpeed = 1.05;
+    gridW = 2;
+    gridH = 2;
+    nouns = ["Boleadora", "Boleadoras"];
+  } else if (subtype === "molotov") {
+    damage = (11 + params.size * 14) * m;
+    reach = 5.5 + params.size;
+    attackSpeed = 1.1;
+    gridW = 1;
+    gridH = 2;
+    nouns = ["Molotov", "Cóctel molotov"];
+  } else if (subtype === "tearGas") {
+    damage = (4 + params.size * 6) * m;
+    reach = 6 + params.size * 1.2;
+    attackSpeed = 1.2;
+    gridW = 1;
+    gridH = 2;
+    nouns = ["Gas lacrimógeno", "Granada de gas"];
+  } else if (subtype === "bazooka") {
+    damage = (28 + params.size * 22) * m;
+    reach = 14 + params.size * 3;
+    attackSpeed = 0.35;
+    gridW = 2;
+    gridH = 4;
+    nouns = ["Bazuca", "Lanzacohetes"];
   } else {
     damage = (10 + params.size * 16) * m;
     reach = 9 + params.size * 2;
@@ -950,10 +1271,28 @@ export function createRingItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
   const styles: RingParams["style"][] = ["band", "signet", "gem", "skull", "braided"];
-  const gems: RingParams["gem"][] = ["none", "ruby", "sapphire", "emerald", "diamond"];
+  const gems: RingParams["gem"][] = [
+    "none",
+    "ruby",
+    "sapphire",
+    "emerald",
+    "diamond",
+    "topaz",
+    "amethyst",
+    "obsidian",
+    "jade",
+    "jet",
+  ];
+  const metals: RingParams["metalKind"][] = ["silver", "gold", "platinum", "bright"];
   const style = styles[Math.floor(r() * styles.length)]!;
-  const gem = style === "gem" || style === "signet" ? gems[1 + Math.floor(r() * (gems.length - 1))]! : r() < 0.3 ? gems[1 + Math.floor(r() * 4)]! : "none";
-  const params: RingParams = { seed, style, gem, metalHue: r(), rarity };
+  const gem =
+    style === "gem" || style === "signet"
+      ? gems[1 + Math.floor(r() * (gems.length - 1))]!
+      : r() < 0.3
+        ? gems[1 + Math.floor(r() * (gems.length - 1))]!
+        : "none";
+  const metalKind = metals[Math.floor(r() * metals.length)]!;
+  const params: RingParams = { seed, style, gem, metalKind, metalHue: r(), rarity };
   const m = rarityMult(rarity);
   const nouns =
     style === "signet"
@@ -1068,12 +1407,13 @@ export function createRandomLootItem(): ItemInstance {
   if (egg) return egg;
   const seed = randomSwordSeed();
   const roll = Math.random();
-  if (roll < 0.1) return createSwordItem(seed);
-  if (roll < 0.18) return createDaggerItem(seed);
-  if (roll < 0.24) return createAxeItem(seed);
-  if (roll < 0.32) return createSmallAxeItem(seed);
-  if (roll < 0.4) return createThrowItem(seed);
-  if (roll < 0.46) return createBowItem(seed);
+  if (roll < 0.09) return createSwordItem(seed);
+  if (roll < 0.15) return createDaggerItem(seed);
+  if (roll < 0.2) return createAxeItem(seed);
+  if (roll < 0.26) return createSmallAxeItem(seed);
+  if (roll < 0.34) return createClubItem(seed);
+  if (roll < 0.42) return createThrowItem(seed);
+  if (roll < 0.47) return createBowItem(seed);
   if (roll < 0.52) return createCrossbowItem(seed);
   if (roll < 0.6) return createArmorItem(seed);
   if (roll < 0.67) return createPantsItem(seed);

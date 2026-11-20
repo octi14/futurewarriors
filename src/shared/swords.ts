@@ -76,11 +76,36 @@ export function generateSwordParams(seed: number): SwordParams {
   const rarity = pickRarity(r);
   const bladeRoll = r();
   const bladeType: SwordParams["bladeType"] =
-    bladeRoll < 0.45 ? "straight" : bladeRoll < 0.75 ? "curved" : "wide";
+    bladeRoll < 0.32
+      ? "straight"
+      : bladeRoll < 0.5
+        ? "curved"
+        : bladeRoll < 0.66
+          ? "wide"
+          : bladeRoll < 0.8
+            ? "katana"
+            : bladeRoll < 0.92
+              ? "foil"
+              : "saber";
 
-  const lengthBase = 0.55 + r() * 0.85;
+  const lengthBase =
+    bladeType === "foil"
+      ? 0.75 + r() * 0.35
+      : bladeType === "katana"
+        ? 0.7 + r() * 0.45
+        : bladeType === "saber"
+          ? 0.65 + r() * 0.55
+          : 0.55 + r() * 0.85;
   const widthBase =
-    bladeType === "wide" ? 0.12 + r() * 0.1 : 0.06 + r() * 0.08;
+    bladeType === "wide"
+      ? 0.12 + r() * 0.1
+      : bladeType === "katana"
+        ? 0.05 + r() * 0.04
+        : bladeType === "foil"
+          ? 0.025 + r() * 0.02
+          : bladeType === "saber"
+            ? 0.04 + r() * 0.03
+            : 0.06 + r() * 0.08;
 
   const metal = rollMetalTone(r, rarity);
   const grip = rollGrip(r);
@@ -110,7 +135,8 @@ export function statsFromParams(params: SwordParams): ItemStats {
   const weightProxy = length * width * 12 + params.guardSpan * 2;
 
   const damage = (10 + length * 18 + width * 40) * m;
-  const reach = 0.55 + length * 0.95;
+  // reach en metros de mundo; el hit usa este valor (no un hitbox inflado aparte)
+  const reach = 0.75 + length * 1.05;
   const attackSpeed = Math.max(0.55, 1.55 - weightProxy * 0.35);
   const windup = Math.max(0.08, 0.28 - attackSpeed * 0.08 + weightProxy * 0.02);
 

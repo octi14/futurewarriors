@@ -135,6 +135,14 @@ export const UNIQUE_IDEAS: UniqueIdea[] = [
     maxCopies: 1,
     notes: "El casco de Daft Punk.",
   },
+  {
+    key: "Max_Verstappen_helmet",
+    name: "Casco de Max Verstappen",
+    rarity: "mythic",
+    kind: "helmet",
+    maxCopies: 1,
+    notes: "Casco de F1 de Max Verstappen (mythic only).",
+  },
   // ——— MYTHIC (1 sola copia en el universo) ———
   // {
   //   key: "mythic_…",
@@ -185,6 +193,14 @@ export const EASTER_EGGS: EasterEggDef[] = [
     style: "beret",
     name: "Gorro del Vecindario",
     rarity: "common",
+  },
+  {
+    key: "egg_chavo_shirt",
+    weight: 0.0005,
+    kind: "armor",
+    style: "jersey",
+    name: "Remera del Vecindario",
+    rarity: "vulgar",
   },
   {
     key: "egg_mariachi",

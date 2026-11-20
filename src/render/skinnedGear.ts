@@ -109,6 +109,7 @@ const PANT_EXCLUDE_BONES = new Set(["Torso", "Neck"]);
 type PatternKind =
   | "leather"
   | "cloth"
+  | "knit"
   | "quilt"
   | "chain"
   | "scale"
@@ -137,10 +138,11 @@ function patternTex(kind: PatternKind, seed: number, hue: number): THREE.CanvasT
   c.width = c.height = 64;
   const g = c.getContext("2d")!;
   const base = new THREE.Color();
-  if (kind === "leather") base.setHSL(0.07 + hue * 0.1, 0.35, 0.28 + r() * 0.12);
+  if (kind === "leather") base.setHSL(0.07 + hue * 0.1, 0.42, 0.24 + r() * 0.1);
   else if (kind === "cloth") base.setHSL(hue, 0.25 + r() * 0.35, 0.35 + r() * 0.2);
+  else if (kind === "knit") base.setHSL(hue, 0.3 + r() * 0.25, 0.32 + r() * 0.16);
   else if (kind === "quilt") base.setHSL(0.1 + hue * 0.15, 0.2, 0.4);
-  else if (kind === "chain") base.setHSL(0.58, 0.04, 0.42);
+  else if (kind === "chain") base.setHSL(0.58, 0.06, 0.48);
   else if (kind === "scale") base.setHSL(0.08 + hue * 0.5, 0.15, 0.35);
   else if (kind === "rivet") base.setHSL(0.08, 0.15, 0.22);
   else if (kind === "lace") base.setHSL(0.07 + hue * 0.08, 0.28, 0.24);
@@ -151,18 +153,24 @@ function patternTex(kind: PatternKind, seed: number, hue: number): THREE.CanvasT
   g.fillRect(0, 0, 64, 64);
 
   if (kind === "leather") {
-    for (let i = 0; i < 400; i++) {
-      const n = (r() * 40 - 20) | 0;
-      g.fillStyle = `rgba(0,0,0,${0.04 + r() * 0.08})`;
-      g.fillRect((r() * 64) | 0, (r() * 64) | 0, 1 + (r() * 3) | 0, 1);
-      if (n > 0) {
-        g.fillStyle = `rgba(255,255,255,0.04)`;
-        g.fillRect((r() * 64) | 0, (r() * 64) | 0, 1, 1);
-      }
+    for (let i = 0; i < 520; i++) {
+      g.fillStyle = `rgba(0,0,0,${0.06 + r() * 0.12})`;
+      g.fillRect((r() * 64) | 0, (r() * 64) | 0, 1 + (r() * 4) | 0, 1 + (r() * 2) | 0);
+      g.fillStyle = `rgba(255,220,180,${0.03 + r() * 0.06})`;
+      g.fillRect((r() * 64) | 0, (r() * 64) | 0, 1, 1);
+    }
+    // Costuras
+    g.strokeStyle = "rgba(0,0,0,0.28)";
+    g.lineWidth = 1.2;
+    for (let y = 8; y < 64; y += 16) {
+      g.beginPath();
+      g.moveTo(2, y);
+      g.lineTo(62, y + (r() * 4 - 2));
+      g.stroke();
     }
   } else if (kind === "cloth") {
     const step = 3 + (r() * 3) | 0;
-    g.strokeStyle = `rgba(0,0,0,0.12)`;
+    g.strokeStyle = `rgba(0,0,0,0.18)`;
     for (let x = 0; x < 64; x += step) {
       g.beginPath();
       g.moveTo(x, 0);
@@ -174,6 +182,21 @@ function patternTex(kind: PatternKind, seed: number, hue: number): THREE.CanvasT
       g.moveTo(0, y);
       g.lineTo(64, y);
       g.stroke();
+    }
+  } else if (kind === "knit") {
+    // Pulóver tejido: puntos de jersey
+    for (let y = 0; y < 64; y += 3) {
+      for (let x = 0; x < 64; x += 3) {
+        const ox = (y / 3) % 2 === 0 ? 0 : 1.5;
+        g.fillStyle = `rgba(0,0,0,${0.12 + r() * 0.12})`;
+        g.beginPath();
+        g.ellipse(x + ox + 1.2, y + 1.2, 1.3, 0.9, 0, 0, Math.PI * 2);
+        g.fill();
+        g.fillStyle = `rgba(255,255,255,${0.06 + r() * 0.08})`;
+        g.beginPath();
+        g.ellipse(x + ox + 1.2, y + 0.7, 0.7, 0.4, 0, 0, Math.PI * 2);
+        g.fill();
+      }
     }
   } else if (kind === "quilt") {
     const cell = 10 + (r() * 6) | 0;
@@ -189,14 +212,20 @@ function patternTex(kind: PatternKind, seed: number, hue: number): THREE.CanvasT
       }
     }
   } else if (kind === "chain") {
-    g.fillStyle = "#00000022";
-    for (let y = 0; y < 64; y += 4) {
-      for (let x = 0; x < 64; x += 4) {
-        const ox = (y / 4) % 2 === 0 ? 0 : 2;
+    // Malla de anillas más legible
+    g.fillStyle = "#1a1a1a55";
+    for (let y = 0; y < 64; y += 5) {
+      for (let x = 0; x < 64; x += 5) {
+        const ox = (y / 5) % 2 === 0 ? 0 : 2.5;
         g.beginPath();
-        g.arc(x + ox + 2, y + 2, 1.6, 0, Math.PI * 2);
+        g.arc(x + ox + 2.2, y + 2.2, 2.1, 0, Math.PI * 2);
         g.fill();
-        g.strokeStyle = "rgba(255,255,255,0.15)";
+        g.strokeStyle = "rgba(220,230,240,0.45)";
+        g.lineWidth = 1.1;
+        g.stroke();
+        g.strokeStyle = "rgba(0,0,0,0.35)";
+        g.beginPath();
+        g.arc(x + ox + 2.2, y + 2.2, 1.15, 0, Math.PI * 2);
         g.stroke();
       }
     }
@@ -342,30 +371,44 @@ function softArmorMat(params: ArmorParams): THREE.MeshStandardMaterial {
     style === "shirt" ||
     style === "tunic" ||
     style === "poncho" ||
-    style === "tabard";
-  const jacketish = style === "jacket" || style === "coat" || style === "duster";
+    style === "tabard" ||
+    style === "jersey" ||
+    style === "snow";
+  const jacketish =
+    style === "jacket" ||
+    style === "leatherJacket" ||
+    style === "coat" ||
+    style === "duster" ||
+    style === "snow";
   const quiltish = style === "padded" || style === "gambeson";
   const chainish = style === "chain" || style === "hauberk";
   const scaleish = style === "scale" || style === "lamellar";
-  const plateish = style === "plate" || style === "cuirass";
+  const plateish = style === "plate" || style === "cuirass" || style === "swat";
   const brig = style === "brigandine";
 
-  let pattern: PatternKind = clothish
-    ? "cloth"
-    : quiltish
-      ? "quilt"
-      : jacketish || style === "leather"
+  let pattern: PatternKind = style === "hoodie" || style === "snow"
+    ? "knit"
+    : style === "jersey"
+      ? "cloth"
+      : style === "leatherJacket"
         ? "leather"
-        : style === "vest" || brig
-          ? "rivet"
-          : chainish
-            ? "chain"
-            : scaleish
-              ? "scale"
-              : plateish
-                ? "metal"
-                : "leather";
+        : clothish
+      ? "cloth"
+      : quiltish
+        ? "quilt"
+        : jacketish || style === "leather"
+          ? "leather"
+          : style === "vest" || brig
+            ? "rivet"
+            : chainish
+              ? "chain"
+              : scaleish
+                ? "scale"
+                : plateish
+                  ? "metal"
+                  : "leather";
   if ((style === "leather" || brig) && r() > 0.55) pattern = "rivet";
+  if (style === "hoodie" && r() > 0.65) pattern = "cloth";
 
   let color: THREE.Color;
   let metalness = 0.05;
@@ -601,7 +644,10 @@ function softBootMat(params: BootsParams, layer: "base" | "plate" = "base"): THR
     );
   }
   const kind: PatternKind =
-    params.style === "canvas" || params.style === "sport" || params.style === "sneaker"
+    params.style === "canvas" ||
+    params.style === "sport" ||
+    params.style === "sneaker" ||
+    params.style === "cleats"
       ? "cloth"
       : params.style === "combat" || params.style === "work"
         ? "lace"
@@ -687,6 +733,46 @@ function softGloveMat(params: GlovesParams): THREE.MeshStandardMaterial {
     rarityGlow(m, params.rarity);
     return m;
   }
+  if (params.style === "boxing") {
+    return withPolyOffset(
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color().setHSL(params.hue, 0.55, 0.35),
+        roughness: 0.92,
+        metalness: 0,
+        side: THREE.DoubleSide,
+      }),
+    );
+  }
+  if (params.style === "keeper") {
+    return withPolyOffset(
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color().setHSL(params.hue, 0.4, 0.28),
+        roughness: 0.88,
+        metalness: 0.02,
+        side: THREE.DoubleSide,
+      }),
+    );
+  }
+  if (params.style === "rubber") {
+    return withPolyOffset(
+      new THREE.MeshStandardMaterial({
+        color: new THREE.Color().setHSL(0.55, 0.05, 0.75),
+        roughness: 0.65,
+        metalness: 0,
+        side: THREE.DoubleSide,
+      }),
+    );
+  }
+  if (params.style === "claws") {
+    return withPolyOffset(
+      new THREE.MeshStandardMaterial({
+        color: metalColor(params.hue, params.rarity),
+        metalness: 0.85,
+        roughness: 0.28,
+        side: THREE.DoubleSide,
+      }),
+    );
+  }
   const kind: PatternKind = params.style === "cloth" ? "cloth" : "leather";
   const map = patternTex(kind, params.seed, params.hue);
   map.repeat.set(2.5, 2.5);
@@ -708,7 +794,7 @@ function softGloveMat(params: GlovesParams): THREE.MeshStandardMaterial {
 
 function softPantsMat(params: PantsParams): THREE.MeshStandardMaterial {
   const r = rng(params.seed);
-  if (params.style === "plated") {
+  if (params.style === "plated" || params.style === "armored") {
     const map = patternTex("metal", params.seed, params.hue);
     map.repeat.set(2, 2);
     const m = withPolyOffset(
@@ -2801,7 +2887,7 @@ export function buildSkinnedBoots(sources: THREE.SkinnedMesh[], params: BootsPar
     minWeight = 0.22;
     bias = { x: 1.06, y: 0.32, z: 1.12 };
     shape = { x: 1.04, y: 0.42, z: 1.12 };
-  } else if (style === "sport" || style === "sneaker") {
+  } else if (style === "sport" || style === "sneaker" || style === "cleats") {
     inflate = 0.011 + params.sole * 0.04;
     minWeight = 0.13;
     bias = { x: 1.1, y: 0.58, z: 1.16 };
@@ -3086,7 +3172,7 @@ export function buildSkinnedPants(sources: THREE.SkinnedMesh[], params: PantsPar
     );
   }
 
-  if (params.style === "plated") {
+  if (params.style === "plated" || params.style === "armored") {
     layers.push(
       createSkinnedShell(sources, {
         ...pantShell,
@@ -3122,7 +3208,7 @@ export function buildSkinnedPants(sources: THREE.SkinnedMesh[], params: PantsPar
     attachDecor(root, sources, "UpperLegR", zip);
   }
   if (params.style === "jogger") joggerCuffDecors(root, sources, params);
-  if (params.style === "plated") {
+  if (params.style === "plated" || params.style === "armored") {
     const mat = softAccentMat({
       seed: params.seed + 1,
       style: "plate",
