@@ -2797,10 +2797,10 @@ export function buildSkinnedBoots(sources: THREE.SkinnedMesh[], params: BootsPar
     bias = { x: 1.05, y: 0.4, z: 1.1 };
     shape = { x: 1.02, y: 0.55, z: 1.08 };
   } else if (style === "canvas") {
-    inflate = 0.011 + params.sole * 0.02;
-    minWeight = 0.14;
-    bias = { x: 1.08, y: 0.55, z: 1.15 };
-    shape = { x: 1.04, y: 0.68, z: 1.1 };
+    inflate = 0.01 + params.sole * 0.015;
+    minWeight = 0.22;
+    bias = { x: 1.06, y: 0.32, z: 1.12 };
+    shape = { x: 1.04, y: 0.42, z: 1.12 };
   } else if (style === "sport" || style === "sneaker") {
     inflate = 0.011 + params.sole * 0.04;
     minWeight = 0.13;

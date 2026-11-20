@@ -71,7 +71,7 @@ function fitItemInView(mesh: THREE.Object3D): void {
   mesh.position.sub(center);
 
   const maxDim = Math.max(size.x, size.y, size.z, 0.01);
-  const dist = maxDim * 2.15;
+  const dist = maxDim * 1.55;
   camera!.position.set(dist * 0.55, dist * 0.42, dist * 0.95);
   camera!.near = dist / 100;
   camera!.far = dist * 20;
@@ -103,10 +103,10 @@ export function itemIconDataUrl(item: ItemInstance, size = 128): string {
   const mesh = buildItemMesh(item);
   // Ángulo “en vitrina” según tipo
   if (item.kind === "sword" || item.kind === "axe" || item.kind === "throw") {
-    mesh.rotation.z += 0.35;
-    mesh.rotation.y += 0.25;
-  } else if (item.kind === "bow" || item.kind === "crossbow") {
     mesh.rotation.y += 0.4;
+    mesh.rotation.z += 0.15;
+  } else if (item.kind === "bow" || item.kind === "crossbow") {
+    mesh.rotation.y += 0.25;
   } else if (item.kind === "shield" || item.kind === "helmet" || item.kind === "armor") {
     mesh.rotation.y += 0.35;
     mesh.rotation.x += 0.1;

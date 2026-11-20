@@ -44,9 +44,10 @@ export type HeroHandle = {
 };
 
 function findObj(root: THREE.Object3D, names: string[]): THREE.Object3D | null {
+  const want = new Set(names.map((n) => n.replace(/\./g, "")));
   let found: THREE.Object3D | null = null;
   root.traverse((o) => {
-    if (!found && names.includes(o.name)) found = o;
+    if (!found && want.has(o.name.replace(/\./g, ""))) found = o;
   });
   return found;
 }
@@ -174,6 +175,34 @@ export async function createHero(): Promise<HeroHandle> {
   const beltBone = findObj(model, ["Abdomen"]) ?? findObj(model, ["Hips"]) ?? model;
   const footL = findObj(model, ["FootL"]) ?? model;
   const footR = findObj(model, ["FootR"]) ?? model;
+  const fingersR = findObj(model, ["FingersR"]);
+  const fingersL = findObj(model, ["FingersL"]);
+  const thumb1R = findObj(model, ["Thumb1R"]);
+  const thumb2R = findObj(model, ["Thumb2R"]);
+  const thumb1L = findObj(model, ["Thumb1L"]);
+  const thumb2L = findObj(model, ["Thumb2L"]);
+  const fingerRest = new Map<THREE.Object3D, THREE.Quaternion>();
+  for (const b of [fingersR, fingersL, thumb1R, thumb2R, thumb1L, thumb2L]) {
+    if (b) fingerRest.set(b, b.quaternion.clone());
+  }
+  const _fistAxis = new THREE.Vector3(1, 0, 0);
+  function curlFinger(bone: THREE.Object3D | null, angle: number): void {
+    if (!bone) return;
+    const rest = fingerRest.get(bone);
+    if (rest) bone.quaternion.copy(rest);
+    bone.rotateOnAxis(_fistAxis, angle);
+  }
+  /** Puño: dedos hacia la palma. El signo es el mismo en ambos lados (el reposo ya está espejado). */
+  function closeFists(both: boolean): void {
+    curlFinger(fingersR, -1.35);
+    curlFinger(thumb1R, -0.85);
+    curlFinger(thumb2R, -0.65);
+    if (!both) return;
+    curlFinger(fingersL, -1.35);
+    curlFinger(thumb1L, -0.85);
+    curlFinger(thumb2L, -0.65);
+  }
+
   const upperArmR = findObj(model, ["UpperArmR"]) as THREE.Object3D | null;
   const upperArmL = findObj(model, ["UpperArmL"]) as THREE.Object3D | null;
   const lowerArmR = findObj(model, ["LowerArmR"]) as THREE.Object3D | null;
@@ -341,10 +370,12 @@ export async function createHero(): Promise<HeroHandle> {
   /** Punto de la otra mano en espacio handGrip (lo marca el arma al equiparse). */
   function hiltSupportLocal(out: THREE.Vector3): THREE.Vector3 {
     const weapon = handGrip.children[0];
-    const local = weapon?.userData.secondHand as THREE.Vector3 | undefined;
-    if (weapon && local) {
+    const tune = weapon?.userData.twoHandGrip as
+      | { hx: number; hy: number; hz: number; ax?: number; ay?: number; az?: number }
+      | undefined;
+    if (weapon && tune) {
       weapon.updateMatrix();
-      return out.copy(local).applyMatrix4(weapon.matrix);
+      return out.set(tune.hx, tune.hy, tune.hz).applyMatrix4(weapon.matrix);
     }
     return out.set(0.1, -0.025, 0.015);
   }
@@ -377,7 +408,10 @@ export async function createHero(): Promise<HeroHandle> {
   /** Lleva la mano derecha delante del pecho: si no, el arma queda fuera del alcance izquierdo. */
   function placeRightHandForward(): void {
     if (!upperArmR || !lowerArmR) return;
-    _carry.set(0, -0.12, 0.7);
+    const aim = handGrip.children[0]?.userData.twoHandGrip as
+      | { ax?: number; ay?: number; az?: number }
+      | undefined;
+    _carry.set(aim?.ax ?? 0, aim?.ay ?? -0.12, aim?.az ?? 0.7);
     torsoBone.localToWorld(_carry);
     placeHand([upperArmR, lowerArmR], palmR, _carry);
   }
@@ -630,9 +664,17 @@ export async function createHero(): Promise<HeroHandle> {
       lowerArmL.rotation.z = armRest.lL.z;
     }
 
-    // +x local baja el arma a la altura de los puños (el offset de la espada la dejaba arriba)
-    handGrip.position.set(handGripRest.px + 0.42, handGripRest.py + 0.015, handGripRest.pz + 0.05);
-    handGrip.rotation.set(handGripRest.rx + 0.28, handGripRest.ry - 0.12, handGripRest.rz + 0.5);
+    const grip = handGrip.children[0]?.userData.twoHandGrip as
+      | { px: number; py: number; pz: number; rx: number; ry: number; rz: number }
+      | undefined;
+    const px = grip?.px ?? 0.42;
+    const py = grip?.py ?? 0.015;
+    const pz = grip?.pz ?? 0.05;
+    const rx = grip?.rx ?? 0.28;
+    const ry = grip?.ry ?? -0.12;
+    const rz = grip?.rz ?? 0.5;
+    handGrip.position.set(handGripRest.px + px, handGripRest.py + py, handGripRest.pz + pz);
+    handGrip.rotation.set(handGripRest.rx + rx, handGripRest.ry + ry, handGripRest.rz + rz);
     placeRightHandForward();
     placeLeftHandOnHilt();
   }
@@ -702,6 +744,8 @@ export async function createHero(): Promise<HeroHandle> {
         applyArmOverlay("onehand", 0, false);
       }
     }
+    const gripping = !!handGrip.children[0]?.userData.twoHandGrip;
+    if (gripping) closeFists(stance === "twohand" || (swinging && lastAnim === "twohand"));
   }
 
   return {

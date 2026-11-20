@@ -76,3 +76,12 @@ export function removeBagItem(bag: BagPlacement[], itemId: string): ItemInstance
 export function getBagItem(bag: BagPlacement[], itemId: string): BagPlacement | null {
   return bag.find((p) => p.item.id === itemId) ?? null;
 }
+
+export function moveBagItem(bag: BagPlacement[], itemId: string, x: number, y: number): boolean {
+  const p = getBagItem(bag, itemId);
+  if (!p) return false;
+  if (!canPlace(bag, x, y, p.item.gridW, p.item.gridH, itemId)) return false;
+  p.x = x;
+  p.y = y;
+  return true;
+}

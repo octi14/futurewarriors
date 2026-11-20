@@ -71,18 +71,18 @@ export function pickRarity(r: () => number): Rarity {
   return "mythic";
 }
 
-/** Multiplicador de stats — curva suave. */
+/** Multiplicador de stats. Cada escalón de rareza suma un bonus más claro. */
 export function rarityMult(rarity: Rarity): number {
   const table: Record<Rarity, number> = {
-    vulgar: 0.85,
+    vulgar: 0.82,
     common: 1,
-    regular: 1.08,
-    uncommon: 1.18,
-    rare: 1.32,
-    exceptional: 1.45,
-    epic: 1.62,
-    legendary: 1.85,
-    mythic: 2.15,
+    regular: 1.15,
+    uncommon: 1.35,
+    rare: 1.65,
+    exceptional: 2.05,
+    epic: 2.6,
+    legendary: 3.3,
+    mythic: 4.2,
   };
   return table[rarity];
 }

@@ -115,6 +115,71 @@ const bowRotation = { x: -0.0016, y: -0.0016, z: -0.5016 };
 /** Offset local del arma / daga de segunda mano. */
 export const offhandHandOffset = { x: 0.4, y: 0.355, z: -0.04 };
 
+/** Empuñadura a dos manos, por tipo. hx/hy/hz = mano izquierda en el arma; p/r = pose del arma en la derecha. */
+export type TwoHandTune = {
+  hx: number;
+  hy: number;
+  hz: number;
+  /** Mano derecha, en espacio del torso. */
+  ax: number;
+  ay: number;
+  az: number;
+  px: number;
+  py: number;
+  pz: number;
+  rx: number;
+  ry: number;
+  rz: number;
+};
+
+const twoHandPose = {
+  ax: 0,
+  ay: -0.12,
+  az: 0.7,
+  px: 0.42,
+  py: 0.015,
+  pz: 0.05,
+  rx: 0.28,
+  ry: -0.12,
+  rz: 0.5,
+};
+
+const twoHandTunes: Record<WeaponOffsetKey, TwoHandTune> = {
+  sword: {
+    hx: -0.09,
+    hy: 0.17,
+    hz: -0.18,
+    ax: 0,
+    ay: -0.12,
+    az: 0.7,
+    px: 0.46,
+    py: 0.2,
+    pz: -0.02,
+    rx: 0.16,
+    ry: -0.41,
+    rz: 0.59,
+  },
+  dagger: { hx: 0, hy: 0, hz: -0.16, ...twoHandPose },
+  axe: {
+    hx: 0.07,
+    hy: 0.31,
+    hz: -0.22,
+    ax: -0.28,
+    ay: -0.1,
+    az: 0.82,
+    px: 0.2,
+    py: 0.08,
+    pz: -0.05,
+    rx: 0.28,
+    ry: -0.12,
+    rz: 0.5,
+  },
+  smallAxe: { hx: 0, hy: 0.26, hz: 0, ...twoHandPose },
+  bow: { hx: 0, hy: 0, hz: -0.16, ...twoHandPose },
+  crossbow: { hx: 0, hy: 0, hz: -0.16, ...twoHandPose },
+  throw: { hx: 0, hy: 0, hz: -0.16, ...twoHandPose },
+};
+
 /**
  * Aplica meshes de equipo a los grips del héroe.
  * AJUSTE MANUAL de offsets: editar SOLO acá (juego + preview).
@@ -157,15 +222,13 @@ export function attachEquippedVisuals(
       mesh.rotation.set(bowRotation.x, bowRotation.y, bowRotation.z);
     } else if (w.kind === "axe") {
       const haft = (w.params as { haftLength?: number }).haftLength ?? 0.6;
-      const hold = Math.min(0.16, haft * 0.28);
       const rot = haft < 0.545 ? smallAxeRotation : axeRotation;
       mesh.rotation.set(rot.x, rot.y, rot.z);
-      mesh.userData.secondHand = new THREE.Vector3(0, hold + Math.min(0.24, haft * 0.32), 0);
     } else {
       // PalmR −X ≈ cara (+Z). Tip geom espada/throw/xbow = +Z → Ry(-90).
       mesh.rotation.set(0, -Math.PI / 2, 0);
-      mesh.userData.secondHand = new THREE.Vector3(0, 0, -0.16);
     }
+    mesh.userData.twoHandGrip = twoHandTunes[weaponOffsetKey(w)];
     next.weapon = replaceGripChild(hero.handGrip, meshes.weapon, mesh);
   } else {
     next.weapon = replaceGripChild(hero.handGrip, meshes.weapon, new THREE.Group());

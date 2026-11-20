@@ -24,7 +24,7 @@ import {
 import { SLASH_DURATION } from "./sim/world";
 import { createDaggerItem, createSwordItem, randomSwordSeed } from "./shared/swords";
 import { setBootDetailTune } from "./render/skinnedGear";
-import type { BootsParams, CombatAnimKind, Equipment, ItemInstance, SwordParams } from "./shared/types";
+import type { AxeParams, BootsParams, CombatAnimKind, Equipment, ItemInstance, SwordParams } from "./shared/types";
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -81,13 +81,19 @@ let autoSpin = false;
 const STRIDE = 0.72;
 const WALK_SPEED = 3.1;
 
-function makeTwoHandSword(seed: number): ItemInstance {
-  const item = createSwordItem(seed);
-  const p = item.params as SwordParams;
-  p.bladeType = "wide";
-  p.bladeLength = Math.max(1.12, p.bladeLength);
-  item.gridW = 2;
-  item.gridH = Math.max(item.gridH, 3);
+function asTwoHand(item: ItemInstance): ItemInstance {
+  if (item.kind === "sword") {
+    const p = item.params as SwordParams;
+    p.bladeType = "wide";
+    p.bladeLength = Math.max(1.12, p.bladeLength);
+    item.gridW = 2;
+    item.gridH = Math.max(item.gridH, 3);
+  } else if (item.kind === "axe") {
+    const p = item.params as AxeParams;
+    p.haftLength = Math.max(1.05, p.haftLength);
+    p.headSize = Math.max(0.36, p.headSize);
+    item.gridH = Math.max(item.gridH, 3);
+  }
   item.name = `${item.name} (2H)`;
   return item;
 }
@@ -103,13 +109,10 @@ document.getElementById("btn-slash")!.addEventListener("click", () => {
 });
 document.getElementById("btn-twohand")!.addEventListener("click", () => {
   twoHandStance = true;
-  equipment.weapon = makeTwoHandSword(randomSwordSeed());
+  equipment.weapon = asTwoHand(createSwordItem(randomSwordSeed()));
   equipment.offhand = null;
   rebuild();
-  combatAnim = "twohand";
-  slashMax = SLASH_DURATION * 1.15;
-  slashT = slashMax;
-  status.textContent = `${status.textContent} · anim 2H`;
+  status.textContent = `${status.textContent} · pose 2H`;
 });
 document.getElementById("btn-spin")!.addEventListener("click", (e) => {
   autoSpin = !autoSpin;
@@ -301,7 +304,9 @@ function makeItem(kind: string): ItemInstance {
     case "daggerOff":
       return createDaggerItem(seed);
     case "axe":
-      return createAxeItem(seed, false);
+      return createAxeItem(seed, false, false);
+    case "axe2h":
+      return createAxeItem(seed, false, true);
     case "smallAxe":
       return createSmallAxeItem(seed);
     case "bow":
@@ -340,7 +345,15 @@ document.getElementById("ui")!.addEventListener("click", (e) => {
   }
   const kind = btn.dataset.kind;
   if (!kind) return;
-  twoHandStance = false;
+  const weapons = ["sword", "dagger", "axe", "smallAxe", "bow", "crossbow", "throw", "sword2h", "axe2h"];
+  if (!weapons.includes(kind)) twoHandStance = false;
+  if (kind === "sword2h" || kind === "axe2h") {
+    twoHandStance = true;
+    equipment.offhand = null;
+    equipment.weapon = asTwoHand(makeItem(kind === "sword2h" ? "sword" : "axe"));
+    rebuild();
+    return;
+  }
   const item = makeItem(kind);
   if (kind === "daggerOff" || item.equipSlot === "offhand") equipment.offhand = item;
   else {

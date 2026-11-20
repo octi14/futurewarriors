@@ -1,5 +1,5 @@
 import type { ElementKind, ItemInstance, ItemStats, Rarity } from "./types";
-import { rarityT } from "./rng";
+import { rarityMult, rarityT } from "./rng";
 
 export const ELEMENT_COLORS: Record<ElementKind, number> = {
   fire: 0xff6a2a,
@@ -27,7 +27,7 @@ export function rollElement(
   const chance = forWeapon ? 0.04 + t * 0.35 : 0.02 + t * 0.22;
   if (r() > chance) return null;
   const element = ELEMENTS[Math.floor(r() * ELEMENTS.length)]!;
-  const elementDamage = Math.round((1.5 + t * 10 + r() * 4) * 10) / 10;
+  const elementDamage = Math.round((2 + r() * 3) * rarityMult(rarity) * 10) / 10;
   return { element, elementDamage };
 }
 

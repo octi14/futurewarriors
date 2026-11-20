@@ -44,8 +44,9 @@ function pickName(
   nouns: string[],
 ): string {
   const r = rngFromSeed(seed ^ 0x51feed);
+  if (rarity === "mythic") return table.mythic[Math.floor(r() * table.mythic.length)]!;
   const adj = table[rarity];
-  return `${adj[Math.floor(r() * adj.length)]} ${nouns[Math.floor(r() * nouns.length)]}`;
+  return `${adj[Math.floor(r() * adj.length)]} ${nouns[0]}`;
 }
 
 const emptyCombat = (): Pick<ItemStats, "damage" | "reach" | "attackSpeed" | "windup"> => ({
@@ -135,13 +136,9 @@ const crossbowAdj = fillRarityAdj(
 
 export function createBootsItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
-  // Crocs: calzado más común y de peor calidad (no easter egg).
-  const genre: BootsParams["style"] = r() < 0.42 ? "crocs" : pickStyle(r, BOOT_VISUAL);
+  const genre: BootsParams["style"] = pickStyle(r, BOOT_VISUAL);
   const style = bootVisual(genre);
-  let rarity = pickRarity(r);
-  if (genre === "crocs") {
-    rarity = r() < 0.72 ? "vulgar" : "common";
-  }
+  const rarity = pickRarity(r);
   const metalRoll = r();
   const metalTone: BootsParams["metalTone"] =
     style === "plate" || style === "greaves"
@@ -162,6 +159,8 @@ export function createBootsItem(seed: number): ItemInstance {
           ? 0.26 + r() * 0.12
           : style === "crocs" || style === "sandal"
             ? 0.12 + r() * 0.05
+            : style === "canvas"
+            ? 0.05 + r() * 0.02
             : style === "sport" || style === "sneaker"
               ? 0.18 + r() * 0.08
               : 0.16 + r() * 0.08,
@@ -206,7 +205,7 @@ export function createBootsItem(seed: number): ItemInstance {
     dress: ["Botines", "Botas de gala"],
     work: ["Botas de trabajo", "Botas de obra"],
     ski: ["Botas de nieve", "Botas de ski"],
-    crocs: ["Zuecos", "Crocs", "Chanclas de goma"],
+    crocs: ["Crocs"],
   };
   const nouns =
     extraNouns[genre] ??
@@ -714,9 +713,10 @@ export function createBeltItem(seed: number): ItemInstance {
   };
 }
 
-export function createAxeItem(seed: number, small = false): ItemInstance {
+export function createAxeItem(seed: number, small = false, twoHand?: boolean): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
+  const want2h = !small && (twoHand ?? r() < 0.4);
   const styleRoll = r();
   const headStyle: AxeParams["headStyle"] = small
     ? styleRoll < 0.6
@@ -730,8 +730,8 @@ export function createAxeItem(seed: number, small = false): ItemInstance {
   const params: AxeParams = {
     seed,
     headStyle,
-    headSize: small ? 0.1 + r() * 0.1 : 0.18 + r() * 0.2,
-    haftLength: small ? 0.32 + r() * 0.22 : 0.55 + r() * 0.55,
+    headSize: small ? 0.1 + r() * 0.1 : want2h ? 0.36 + r() * 0.16 : 0.16 + r() * 0.12,
+    haftLength: small ? 0.32 + r() * 0.22 : want2h ? 1.05 + r() * 0.45 : 0.5 + r() * 0.18,
     metalHue: r(),
     rarity,
   };
@@ -761,7 +761,7 @@ export function createAxeItem(seed: number, small = false): ItemInstance {
       seed,
       rarity,
       axeAdj,
-      small ? ["Hachuela", "Hacha de mano", "Hacha corta"] : ["Hacha", "Hachuela", "Bipennis"],
+      small ? ["Hacha chica"] : ["Hacha"],
     ),
     gridW: small ? 1 : 2,
     gridH: small ? 2 : 3,

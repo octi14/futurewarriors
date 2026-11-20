@@ -50,6 +50,7 @@ function uiKey(world: WorldState): string {
 
 export function bindHud(handlers: {
   onEquipBag: (itemId: string) => void;
+  onMoveBag: (itemId: string, x: number, y: number) => void;
   onUnequip: (slot: EquipSlotId) => void;
   onDropBag: (itemId: string) => void;
   onDropEquip: (slot: EquipSlotId) => void;
@@ -97,7 +98,89 @@ export function bindHud(handlers: {
     return itemIndex.get(id) ?? null;
   }
 
+  let suppressClick = false;
+  let bagDrag: {
+    id: string;
+    px: number;
+    py: number;
+    ox: number;
+    oy: number;
+    el: HTMLElement;
+    ghost: HTMLElement | null;
+    moved: boolean;
+  } | null = null;
+
+  function endBagDrag(clientX: number, clientY: number): void {
+    const d = bagDrag;
+    bagDrag = null;
+    if (!d) return;
+    d.ghost?.remove();
+    d.el.classList.remove("dragging");
+    if (!d.moved) return;
+    suppressClick = true;
+    const cells = invEl.querySelectorAll<HTMLElement>(".bag-cell");
+    const a = cells[0]?.getBoundingClientRect();
+    const b = cells[1]?.getBoundingClientRect();
+    const c = cells[BAG_COLS]?.getBoundingClientRect();
+    if (!a || !b || !c || b.left === a.left || c.top === a.top) return;
+    const left = clientX - d.ox * d.el.offsetWidth;
+    const top = clientY - d.oy * d.el.offsetHeight;
+    const col = Math.round((left - a.left) / (b.left - a.left));
+    const row = Math.round((top - a.top) / (c.top - a.top));
+    handlers.onMoveBag(d.id, col, row);
+  }
+
+  invEl.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    const bag = (e.target as HTMLElement).closest<HTMLElement>("[data-bag-item]");
+    if (!bag?.dataset.bagItem) return;
+    const r = bag.getBoundingClientRect();
+    bagDrag = {
+      id: bag.dataset.bagItem,
+      px: e.clientX,
+      py: e.clientY,
+      ox: r.width > 0 ? (e.clientX - r.left) / r.width : 0,
+      oy: r.height > 0 ? (e.clientY - r.top) / r.height : 0,
+      el: bag,
+      ghost: null,
+      moved: false,
+    };
+    try {
+      bag.setPointerCapture(e.pointerId);
+    } catch {
+      /* el puntero sintético no se puede capturar */
+    }
+  });
+
+  invEl.addEventListener("pointermove", (e) => {
+    const d = bagDrag;
+    if (!d) return;
+    if (!d.moved && Math.hypot(e.clientX - d.px, e.clientY - d.py) < 6) return;
+    d.moved = true;
+    if (!d.ghost) {
+      const ghost = d.el.cloneNode(true) as HTMLElement;
+      ghost.classList.add("bag-ghost");
+      document.body.appendChild(ghost);
+      d.ghost = ghost;
+      d.el.classList.add("dragging");
+      hideTip();
+    }
+    const w = d.el.offsetWidth;
+    const h = d.el.offsetHeight;
+    d.ghost.style.width = `${w}px`;
+    d.ghost.style.height = `${h}px`;
+    d.ghost.style.left = `${e.clientX - d.ox * w}px`;
+    d.ghost.style.top = `${e.clientY - d.oy * h}px`;
+  });
+
+  invEl.addEventListener("pointerup", (e) => endBagDrag(e.clientX, e.clientY));
+  invEl.addEventListener("pointercancel", (e) => endBagDrag(e.clientX, e.clientY));
+
   invEl.addEventListener("click", (e) => {
+    if (suppressClick) {
+      suppressClick = false;
+      return;
+    }
     const target = e.target as HTMLElement;
     const drop = e.shiftKey;
     const bag = target.closest<HTMLElement>("[data-bag-item]");

@@ -75,10 +75,20 @@ export function makeEdgeMat(hue: number, rarity: Rarity): THREE.MeshStandardMate
   });
 }
 
-/** 0..1 sutil: vulgar casi nada; mythic fuerte pero sin flare de loot. */
+/** Vulgar casi apagado; épico / legendario / mítico brillan de verdad. */
 export function rarityGlowStrength(rarity: Rarity): number {
-  const t = rarityT(rarity);
-  return 0.03 + t * t * 0.72;
+  const table: Record<Rarity, number> = {
+    vulgar: 0.05,
+    common: 0.1,
+    regular: 0.16,
+    uncommon: 0.28,
+    rare: 0.48,
+    exceptional: 0.7,
+    epic: 0.95,
+    legendary: 1.25,
+    mythic: 1.6,
+  };
+  return table[rarity];
 }
 
 export function itemHue(item: ItemInstance): number {
@@ -110,19 +120,19 @@ export function applyItemGlow(
       if (!(mat instanceof THREE.MeshStandardMaterial)) continue;
       const metalish = mat.metalness > 0.25;
       // Filo/metal un poco más; tela/cuero apenas tiñe — nunca exagerado
-      const glowAmt = metalish ? 0.07 + strength * 0.32 : 0.025 + strength * 0.14;
+      const glowAmt = metalish ? 0.06 + strength * 0.7 : 0.02 + strength * 0.42;
       mat.emissive.copy(color).multiplyScalar(glowAmt);
-      mat.emissiveIntensity = 0.28 + strength * 0.65;
-      if (metalish) mat.envMapIntensity = Math.min(1.6, (mat.envMapIntensity || 1) + strength * 0.25);
+      mat.emissiveIntensity = 0.4 + strength * 1.35;
+      if (metalish) mat.envMapIntensity = Math.min(2.6, (mat.envMapIntensity || 1) + strength * 0.45);
     }
   });
 
   // Halo de luz real muy suave (ilumina el piso cerca), no esfera visible
-  if (opts?.lights && strength >= 0.3) {
+  if (opts?.lights && strength >= 0.4) {
     const light = new THREE.PointLight(
       color,
-      0.06 + strength * 0.22,
-      0.7 + strength * 0.7,
+      0.18 + strength * 1.15,
+      1.3 + strength * 2.2,
       2,
     );
     light.position.set(0, 0.06, 0);
@@ -232,7 +242,8 @@ function makeSingleBoot(
   const cuffMat = usePlate ? metal : leatherDark;
 
   const soleH = Math.max(0.03, params.sole);
-  const shaftH = Math.max(0.18, params.height);
+  const canvas = params.style === "canvas";
+  const shaftH = canvas ? 0.045 : Math.max(0.18, params.height);
   const rTop =
     params.style === "canvas" || params.style === "sport" ? 0.055 : greaves ? 0.07 : 0.065;
   const rBot = params.style === "trail" ? 0.075 : greaves ? 0.08 : 0.07;
@@ -290,6 +301,15 @@ function makeSingleBoot(
     const stud = new THREE.Mesh(new THREE.SphereGeometry(0.02, 6, 6), metal);
     stud.position.set(0.06, soleH + 0.12, 0.02);
     boot.add(stud);
+  }
+
+  if (canvas) {
+    const lace = new THREE.MeshStandardMaterial({ color: 0xf4f4f1, roughness: 0.7 });
+    for (let i = 0; i < 4; i++) {
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.008, 0.012), lace);
+      bar.position.set(0, soleH + 0.09, 0.02 + i * 0.028);
+      boot.add(bar);
+    }
   }
 
   if (greaves) {
@@ -1430,20 +1450,22 @@ export function buildItemMesh(
     m = buildHelmetMesh(item.params as HelmetParams);
     m.scale.setScalar(1.15);
   } else if (item.kind === "armor") {
-    m = buildArmorMesh(item.params as ArmorParams);
+    const p = item.params as ArmorParams;
+    m = buildWornArmorMesh({ ...p, style: armorVisual(p.style) });
     m.scale.setScalar(0.9);
   } else if (item.kind === "pants") {
     m = buildPantsMesh(item.params as PantsParams);
     m.scale.setScalar(1);
   } else if (item.kind === "gloves") {
-    m = buildGlovesMesh(item.params as GlovesParams);
+    const p = item.params as GlovesParams;
+    m = buildWornGloveMesh({ ...p, style: gloveVisual(p.style) });
     m.scale.setScalar(1);
   } else if (item.kind === "ring") {
     m = buildRingMesh(item.params as RingParams);
   } else if (item.kind === "amulet") {
     m = buildAmuletMesh(item.params as AmuletParams);
   } else {
-    m = buildBeltMesh(item.params as BeltParams);
+    m = buildWornBeltMesh(item.params as BeltParams);
     m.scale.setScalar(1.1);
   }
   applyItemGlow(m, itemHue(item), itemRarity(item), {

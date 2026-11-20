@@ -139,12 +139,14 @@ const adjectives = fillRarityAdj(
   },
 );
 
-const nouns = ["Hoja", "Espada", "Sable", "Tizona"];
-
 export function nameFromParams(params: SwordParams): string {
   const r = rngFromSeed(params.seed ^ 0xabc123);
+  if (params.rarity === "mythic") {
+    const names = adjectives.mythic;
+    return names[Math.floor(r() * names.length)]!;
+  }
   const adj = adjectives[params.rarity];
-  return `${adj[Math.floor(r() * adj.length)]} ${nouns[Math.floor(r() * nouns.length)]}`;
+  return `${adj[Math.floor(r() * adj.length)]} Espada`;
 }
 
 let itemSeq = 1;
@@ -189,8 +191,11 @@ export function createDaggerItem(seed: number): ItemInstance {
     ornament: Math.min(1, 0.08 + rarityT(rarity) * 0.7 + r() * 0.25),
     rarity,
   };
-  const daggerNouns = ["Puñal", "Daga", "Estilete"];
   const adj = adjectives[rarity];
+  const name =
+    rarity === "mythic"
+      ? adjectives.mythic[Math.floor(r() * adjectives.mythic.length)]!
+      : `${adj[Math.floor(r() * adj.length)]} Daga`;
   return {
     id: nextItemId(seed),
     kind: "sword",
@@ -198,7 +203,7 @@ export function createDaggerItem(seed: number): ItemInstance {
     seed,
     params,
     stats: withElementStats(statsFromParams(params), rollElement(r, rarity, true)),
-    name: `${adj[Math.floor(r() * adj.length)]} ${daggerNouns[Math.floor(r() * daggerNouns.length)]}`,
+    name,
     gridW: 1,
     gridH: 2,
   };

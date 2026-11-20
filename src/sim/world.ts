@@ -1,7 +1,7 @@
 import { aggregateCombatElements } from "../shared/elements";
 import { createRandomLootItem, isDualWieldable } from "../shared/gear";
 import { createSwordItem } from "../shared/swords";
-import { getBagItem, removeBagItem, tryPlaceItem } from "./bag";
+import { getBagItem, moveBagItem, removeBagItem, tryPlaceItem } from "./bag";
 import type {
   Actor,
   AxeParams,
@@ -64,10 +64,10 @@ export const AI_DEATH_ANIM = 0.9;
 /** Tiempo total de cadáver antes de desaparecer (incluye anim). */
 export const AI_CORPSE_TIME = 3.2;
 const AI_KNOCKBACK = 1.35;
-const AI_RESPAWN_INTERVAL = 5;
+const AI_RESPAWN_INTERVAL = 1;
 
 /** Metros de juego por paso (una pierna). Un ciclo completo ≈ 2 zancadas. */
-export const STRIDE_LENGTH = 0.72;
+export const STRIDE_LENGTH = 0.62;
 
 export const EQUIP_SLOT_LABELS: Record<EquipSlotId, string> = {
   helmet: "Casco",
@@ -422,6 +422,10 @@ function tryAddItem(world: WorldState, item: ItemInstance): boolean {
 }
 
 /** Equipa desde la mochila (por id de ítem) al slot correspondiente. */
+export function moveBagItemTo(world: WorldState, itemId: string, x: number, y: number): void {
+  moveBagItem(world.bag, itemId, x, y);
+}
+
 export function equipFromBag(world: WorldState, itemId: string): void {
   const placed = getBagItem(world.bag, itemId);
   if (!placed) {
