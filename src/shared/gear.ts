@@ -72,14 +72,17 @@ const emptyCombat = (): Pick<ItemStats, "damage" | "reach" | "attackSpeed" | "wi
 });
 
 const bootAdj = fillRarityAdj(
-  ["Gastadas", "Rústicas", "Viejas", "Dañadas", "Débiles", "Inferiores"],
-  ["Aceptables", "Tranquilas", "Ligeras"],
-  ["Veloces", "Sombra", "Caminantes"],
+  ["Gastadas", "Viejas", "Dañadas", "Débiles", "Inferiores", "Abandonadas", "Desechadas", "Perdidas",
+     "Vencidas", "Desterradas", "Odiadas", "Obsoletas", "Moribundas", "Terminadas", "Abatidas"],
+  ["Aceptables", "Tranquilas", "Rústicas", "Ordinarias", "Humildes", "Decentes", "Silenciosas", "Estables", 
+    "Suficientes", "Seguras"],
+  ["Ligeras", "Sombras", "Caminantes", "Atrevidas", "Rápidas", "Ventajas", "Superiores", "Elegantes", "Destacadas"],
   ["Aladas", "Tempestad", "Errantes"],
   { legendary: ["Aladas", "Etéreas", "Errantes"], mythic: ["Celestes", "Infinitas", "Umbrales"] },
 );
 const shieldAdj = fillRarityAdj(
-  ["Rajado", "Tosco", "Viejo"],
+  ["Rajado", "Tosco", "Viejo", "Obsoleto", "Desechado", "Perdido", "Vencido", "Desterrado", "Odiado", "Moribundo",
+     "Terminado", "Abatido", "Intratable"],
   ["Firme", "Reforzado", "Sólido"],
   ["Baluarte", "Noble", "Runado"],
   ["Inquebrantable", "Égida", "Ancestral"],
@@ -118,35 +121,36 @@ const beltAdj = fillRarityAdj(
   ["Firme", "Ancho", "Curtido"],
   ["Reforzado", "Noble", "Runado"],
   ["Cinto", "Égida", "Ancestral"],
-  { legendary: ["Égida", "Soberano", "Eterno"], mythic: ["Primordial", "Cósmico", "Absoluto"] },
+  { legendary: ["Égida", "Soberano", "Eterno"], mythic: ["Primordial", "Cósmico", "Absoluto", "Sagrada", 
+    "Suprema", "Magna"] },
 );
 const axeAdj = fillRarityAdj(
   ["Oxidada", "Tosca", "Pesada"],
   ["Afilada", "Firme", "Brutal"],
   ["Voraz", "Noble", "Runada"],
   ["Tempestad", "Ancestral", "Devastadora"],
-  { legendary: ["Devastadora", "Titánica", "Eterna"], mythic: ["Primordial", "Cósmica", "Absoluta"] },
+  { legendary: ["Devastadora", "Titánica", "Eterna"], mythic: ["Primordial", "Cósmica", "Absoluta", "Sagrada", "Suprema"] },
 );
 const throwAdj = fillRarityAdj(
   ["Tosco", "Simple", "Oxidado"],
   ["Equilibrado", "Afilado", "Ligero"],
   ["Certero", "Noble", "Runado"],
   ["Tempestad", "Ancestral", "Letal"],
-  { legendary: ["Letal", "Eterno", "Sombra"], mythic: ["Primordial", "Cósmico", "Absoluto"] },
+  { legendary: ["Letal", "Eterno", "Sombra"], mythic: ["Primordial", "Cósmico", "Absoluto", "Sagrado", "Supremo", "Magno"] },
 );
 const bowAdj = fillRarityAdj(
   ["Tosco", "Simple", "Viejo"],
   ["Ágil", "Tenso", "Ligero"],
   ["Certero", "Noble", "Runado"],
   ["Tempestad", "Ancestral", "Letal"],
-  { legendary: ["Eterno", "Sagitario", "Lunar"], mythic: ["Primordial", "Cósmico", "Absoluto"] },
+  { legendary: ["Eterno", "Sagitario", "Lunar"], mythic: ["Primordial", "Cósmico", "Absoluto", "Sagrada", "Suprema", "Magna"] },
 );
 const crossbowAdj = fillRarityAdj(
   ["Tosca", "Simple", "Oxidada"],
   ["Firme", "Pesada", "Tensa"],
   ["Certera", "Noble", "Runada"],
   ["Tempestad", "Ancestral", "Letal"],
-  { legendary: ["Eterna", "Asedio", "Titánica"], mythic: ["Primordial", "Cósmica", "Absoluta"] },
+  { legendary: ["Eterna", "Asedio", "Titánica"], mythic: ["Primordial", "Cósmica", "Absoluta", "Sagrada", "Suprema"] },
 );
 
 export function createBootsItem(seed: number): ItemInstance {
