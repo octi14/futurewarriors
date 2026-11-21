@@ -32,6 +32,10 @@ export type RenderHandles = {
   resize: () => void;
   sync: (world: WorldState) => void;
   dispose: () => void;
+  setFirstPerson: (on: boolean) => void;
+  isFirstPerson: () => boolean;
+  addPitch: (delta: number) => void;
+  pitch: () => number;
 };
 
 /** Caída al suelo con rebote corto. startY → groundY. */
@@ -58,6 +62,21 @@ export async function createRenderer(container: HTMLElement, mapSize = 180): Pro
   scene.fog = new THREE.Fog(0x7a7358, 45, 95);
 
   const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 420);
+  let firstPerson = false;
+  let fpPitch = -0.12;
+  let snapThirdPerson = false;
+  function setFirstPerson(on: boolean): void {
+    if (firstPerson && !on) snapThirdPerson = true;
+    firstPerson = on;
+    if (!on) fpPitch = -0.12;
+    camera.fov = on ? 90 : 42;
+    camera.near = on ? 0.02 : 0.1;
+    camera.updateProjectionMatrix();
+    hero.setFps(on);
+  }
+  function addPitch(delta: number): void {
+    fpPitch = Math.max(-1.15, Math.min(1.05, fpPitch + delta));
+  }
   camera.position.set(12, 15, 12);
   camera.lookAt(0, 0, 0);
 
@@ -446,14 +465,36 @@ export async function createRenderer(container: HTMLElement, mapSize = 180): Pro
     hero.update(dt, p.walkPhase, p.moving, swinging, p.running, stance, world.blocking, locoScale);
 
     shake = Math.max(0, shake - 0.016);
-    const camTarget = new THREE.Vector3(p.pos.x, 0.9 + p.height * 0.45, p.pos.y);
-    const camPos = camTarget.clone().add(new THREE.Vector3(5.4, 5.95, 6.5));
-    if (shake > 0) {
-      camPos.x += (Math.random() - 0.5) * shake * 2;
-      camPos.y += (Math.random() - 0.5) * shake * 1.2;
+    if (firstPerson && p.alive) {
+      const bob = p.moving ? Math.sin(p.walkPhase * 2) * (p.running ? 0.04 : 0.025) : 0;
+      const eyeY = p.height + (p.crouching ? 0.92 : 1.55) + bob;
+      const fx = -Math.sin(p.facing);
+      const fz = -Math.cos(p.facing);
+      const cp = Math.cos(fpPitch);
+      const sp = Math.sin(fpPitch);
+      const px = p.pos.x + fx * 0.12;
+      const pz = p.pos.y + fz * 0.12;
+      camera.position.set(px, eyeY, pz);
+      if (shake > 0) {
+        camera.position.x += (Math.random() - 0.5) * shake;
+        camera.position.y += (Math.random() - 0.5) * shake * 0.6;
+      }
+      camera.lookAt(px + fx * cp, eyeY + sp, pz + fz * cp);
+    } else {
+      const camTarget = new THREE.Vector3(p.pos.x, 0.9 + p.height * 0.45, p.pos.y);
+      const camPos = camTarget.clone().add(new THREE.Vector3(5.4, 5.95, 6.5));
+      if (shake > 0) {
+        camPos.x += (Math.random() - 0.5) * shake * 2;
+        camPos.y += (Math.random() - 0.5) * shake * 1.2;
+      }
+      if (snapThirdPerson) {
+        camera.position.copy(camPos);
+        snapThirdPerson = false;
+      } else {
+        camera.position.lerp(camPos, 0.14);
+      }
+      camera.lookAt(camTarget);
     }
-    camera.position.lerp(camPos, 0.14);
-    camera.lookAt(camTarget);
 
     const presentIds = new Set<string>();
     for (const ai of world.ais) {
@@ -594,5 +635,9 @@ export async function createRenderer(container: HTMLElement, mapSize = 180): Pro
     resize,
     sync,
     dispose,
+    setFirstPerson,
+    isFirstPerson: () => firstPerson,
+    addPitch,
+    pitch: () => fpPitch,
   };
 }

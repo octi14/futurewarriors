@@ -90,21 +90,86 @@ window.addEventListener("keydown", (e) => {
   if (e.code === "KeyI") {
     e.preventDefault();
     toggleInventory(world);
+    syncLookLock();
   }
   if (e.code === "KeyC") {
     e.preventDefault();
     toggleCharacter(world);
+    syncLookLock();
+  }
+  if (e.code === "KeyV") {
+    e.preventDefault();
+    toggleView();
   }
 });
 window.addEventListener("keyup", (e) => keys.delete(e.code));
+let lookYaw = world.player.facing;
+const viewBtn = document.getElementById("view-btn")!;
+function toggleView(): void {
+  const on = !render.isFirstPerson();
+  if (on) lookYaw = world.player.facing;
+  render.setFirstPerson(on);
+  document.body.classList.toggle("fps", on);
+  viewBtn.textContent = on ? "3ª" : "1ª";
+  viewBtn.setAttribute("aria-pressed", String(on));
+  viewBtn.setAttribute("aria-label", on ? "Tercera persona" : "Primera persona");
+  const fine = matchMedia("(pointer: fine)").matches;
+  if (on && fine && !uiOpen()) render.renderer.domElement.requestPointerLock();
+  else if (!on && document.pointerLockElement) document.exitPointerLock();
+}
+function syncLookLock(): void {
+  document.body.classList.toggle("ui-open", uiOpen());
+  if (!render.isFirstPerson() || !matchMedia("(pointer: fine)").matches) return;
+  if (uiOpen()) {
+    if (document.pointerLockElement) document.exitPointerLock();
+  } else {
+    render.renderer.domElement.requestPointerLock();
+  }
+}
+viewBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  toggleView();
+});
+
+let lookPointer: number | null = null;
+window.addEventListener("pointerdown", (e) => {
+  if (!render.isFirstPerson() || uiOpen() || document.pointerLockElement) return;
+  const t = e.target as HTMLElement;
+  if (t.closest("#inv, #char, #help, #combat-hud, #view-btn")) return;
+  lookPointer = e.pointerId;
+});
+window.addEventListener("pointermove", (e) => {
+  if (e.pointerId !== lookPointer || !render.isFirstPerson() || uiOpen()) return;
+  lookYaw -= e.movementX * 0.004;
+  render.addPitch(-e.movementY * 0.003);
+});
+window.addEventListener("pointerup", (e) => {
+  if (e.pointerId === lookPointer) lookPointer = null;
+});
+window.addEventListener("pointercancel", (e) => {
+  if (e.pointerId === lookPointer) lookPointer = null;
+});
+
 window.addEventListener("mousemove", (e) => {
   pointerClientX = e.clientX;
   pointerClientY = e.clientY;
   hasPointer = true;
+  if (render.isFirstPerson() && !uiOpen() && document.pointerLockElement) {
+    lookYaw -= e.movementX * 0.0022;
+    render.addPitch(-e.movementY * 0.0018);
+  }
 });
 window.addEventListener("mousedown", (e) => {
   const t = e.target as HTMLElement;
-  if (t.closest("#inv, #char, #help, #combat-hud")) return;
+  if (t.closest("#inv, #char, #help, #combat-hud, #view-btn")) return;
+  if (
+    render.isFirstPerson() &&
+    !uiOpen() &&
+    !document.pointerLockElement &&
+    matchMedia("(pointer: fine)").matches
+  ) {
+    render.renderer.domElement.requestPointerLock();
+  }
   if (e.button === 0) doAttack();
   if (e.button === 2) {
     e.preventDefault();
@@ -119,46 +184,76 @@ window.addEventListener("blur", () => setBlocking(world, false));
 window.addEventListener("resize", () => render.resize());
 
 function readInput(): InputState {
+  const fp = render.isFirstPerson();
   let moveX = 0;
   let moveY = 0;
   if (!uiOpen()) {
-    if (keys.has("KeyW") || keys.has("ArrowUp")) {
-      moveX -= 1;
-      moveY -= 1;
-    }
-    if (keys.has("KeyS") || keys.has("ArrowDown")) {
-      moveX += 1;
-      moveY += 1;
-    }
-    if (keys.has("KeyA") || keys.has("ArrowLeft")) {
-      moveX -= 1;
-      moveY += 1;
-    }
-    if (keys.has("KeyD") || keys.has("ArrowRight")) {
-      moveX += 1;
-      moveY -= 1;
+    if (fp) {
+      let f = 0;
+      let s = 0;
+      if (keys.has("KeyW") || keys.has("ArrowUp")) f += 1;
+      if (keys.has("KeyS") || keys.has("ArrowDown")) f -= 1;
+      if (keys.has("KeyA") || keys.has("ArrowLeft")) s -= 1;
+      if (keys.has("KeyD") || keys.has("ArrowRight")) s += 1;
+      const fx = -Math.sin(lookYaw);
+      const fz = -Math.cos(lookYaw);
+      moveX = fx * f + -fz * s;
+      moveY = fz * f + fx * s;
+    } else {
+      if (keys.has("KeyW") || keys.has("ArrowUp")) {
+        moveX -= 1;
+        moveY -= 1;
+      }
+      if (keys.has("KeyS") || keys.has("ArrowDown")) {
+        moveX += 1;
+        moveY += 1;
+      }
+      if (keys.has("KeyA") || keys.has("ArrowLeft")) {
+        moveX -= 1;
+        moveY += 1;
+      }
+      if (keys.has("KeyD") || keys.has("ArrowRight")) {
+        moveX += 1;
+        moveY -= 1;
+      }
     }
   }
 
-  const ground = hasPointer ? mouseToGround(pointerClientX, pointerClientY) : null;
+  const ground = !fp && hasPointer ? mouseToGround(pointerClientX, pointerClientY) : null;
   const aimMoved =
+    !fp &&
     hasPointer &&
     (pointerClientX !== prevPointerX || pointerClientY !== prevPointerY);
   prevPointerX = pointerClientX;
   prevPointerY = pointerClientY;
+
+  let aimX = ground?.x ?? world.player.pos.x;
+  let aimY = ground?.y ?? world.player.pos.y;
+  if (fp) {
+    const pitch = render.pitch();
+    const fx = -Math.sin(lookYaw);
+    const fz = -Math.cos(lookYaw);
+    const sp = Math.sin(pitch);
+    const cp = Math.cos(pitch);
+    const eyeY = world.player.height + (world.player.crouching ? 0.92 : 1.55);
+    const reach = sp < -0.08 ? Math.min(36, eyeY / -sp) : 24;
+    aimX = world.player.pos.x + fx * cp * reach;
+    aimY = world.player.pos.y + fz * cp * reach;
+  }
 
   const jump = jumpQueued;
   jumpQueued = false;
   return {
     moveX,
     moveY,
-    aimX: ground?.x ?? world.player.pos.x,
-    aimY: ground?.y ?? world.player.pos.y,
-    hasAim: ground !== null,
+    aimX,
+    aimY,
+    hasAim: fp || ground !== null,
     aimMoved,
     sprint: sprintHeld(),
     jump,
     crouch: !uiOpen() && crouchHeld(),
+    lookFacing: fp ? lookYaw : null,
   };
 }
 

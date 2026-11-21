@@ -1,5 +1,6 @@
 import { rollElement, withElementStats } from "./elements";
 import { fillRarityAdj, pickRarity, rarityMult, rarityT, rngFromSeed } from "./rng";
+import { pickStyleForRarity, SWORD_RARITY } from "./rarityGates";
 import type { ItemInstance, ItemStats, Rarity, SwordParams } from "./types";
 
 export { rngFromSeed, pickRarity, rarityMult } from "./rng";
@@ -74,19 +75,12 @@ function rollGuard(r: () => number): SwordParams["guardStyle"] {
 export function generateSwordParams(seed: number): SwordParams {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
-  const bladeRoll = r();
-  const bladeType: SwordParams["bladeType"] =
-    bladeRoll < 0.32
-      ? "straight"
-      : bladeRoll < 0.5
-        ? "curved"
-        : bladeRoll < 0.66
-          ? "wide"
-          : bladeRoll < 0.8
-            ? "katana"
-            : bladeRoll < 0.92
-              ? "foil"
-              : "saber";
+  const bladeType = pickStyleForRarity(
+    r,
+    ["straight", "curved", "wide", "katana", "foil", "saber"],
+    rarity,
+    SWORD_RARITY,
+  );
 
   const lengthBase =
     bladeType === "foil"
@@ -205,7 +199,7 @@ export function createDaggerItem(seed: number): ItemInstance {
   const grip = rollGrip(r);
   const params: SwordParams = {
     seed,
-    bladeType: r() < 0.55 ? "straight" : "curved",
+    bladeType: pickStyleForRarity(r, ["straight", "curved"], rarity, SWORD_RARITY),
     bladeLength: 0.32 + r() * 0.22,
     bladeWidth: 0.045 + r() * 0.04,
     guardSpan: 0.1 + r() * 0.1,

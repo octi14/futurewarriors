@@ -1196,6 +1196,8 @@ export type InputState = {
   jump: boolean;
   /** Ctrl: agachar */
   crouch: boolean;
+  /** Primera persona: el yaw lo marca la mirada, no el WASD. */
+  lookFacing: number | null;
 };
 
 export function stepWorld(world: WorldState, dt: number, input: InputState): void {
@@ -1266,8 +1268,10 @@ export function stepWorld(world: WorldState, dt: number, input: InputState): voi
     player.running =
       player.moving && input.sprint && player.energy > 1 && !player.crouching && grounded;
 
-    // Mirar al mouse solo parado; con WASD, hacia donde camina
-    if (player.moving) {
+    // Primera persona: la mirada manda. Si no, mirar al mouse parado y al paso al caminar.
+    if (input.lookFacing != null) {
+      player.facing = input.lookFacing;
+    } else if (player.moving) {
       player.facing = Math.atan2(input.moveX / len, input.moveY / len) + Math.PI;
     } else if (input.hasAim && input.aimMoved) {
       const adx = input.aimX - player.pos.x;

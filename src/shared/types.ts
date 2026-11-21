@@ -62,6 +62,7 @@ export type ClubParams = {
 
 export type BowParams = {
   seed: number;
+  subtype: "bow";
   draw: number;
   limbCurve: number;
   metalHue: number;
@@ -70,6 +71,7 @@ export type BowParams = {
 
 export type CrossbowParams = {
   seed: number;
+  subtype: "crossbow";
   power: number;
   stockLength: number;
   metalHue: number;

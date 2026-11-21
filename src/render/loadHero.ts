@@ -24,6 +24,8 @@ export type HeroHandle = {
   gloveGripL: THREE.Group;
   gloveGripR: THREE.Group;
   setHurt: (hurt: boolean) => void;
+  /** Oculta la cabeza (y el casco) para no ver el interior en primera persona. */
+  setFps: (on: boolean) => void;
   update: (
     dt: number,
     walkPhase: number,
@@ -171,6 +173,12 @@ export async function createHero(): Promise<HeroHandle> {
     findObj(model, ["LowerArmL"]) ??
     model;
   const headBone = findObj(model, ["Head"]) ?? model;
+  const canHideHead = headBone !== model;
+  let fpsView = false;
+  function setFps(on: boolean): void {
+    fpsView = on;
+    if (canHideHead) headBone.scale.setScalar(on ? 0.001 : 1);
+  }
   // OJO: traverse encuentra Body antes que Torso — pedir Torso solo
   const torsoBone = findObj(model, ["Torso"]) ?? findObj(model, ["Abdomen"]) ?? model;
   const beltBone = findObj(model, ["Abdomen"]) ?? findObj(model, ["Hips"]) ?? model;
@@ -781,6 +789,7 @@ export async function createHero(): Promise<HeroHandle> {
     }
     const gripping = !!handGrip.children[0]?.userData.twoHandGrip;
     if (gripping) closeFists(stance === "twohand" || (swinging && lastAnim === "twohand"));
+    if (canHideHead) headBone.scale.setScalar(fpsView ? 0.001 : 1);
   }
 
   return {
@@ -799,6 +808,7 @@ export async function createHero(): Promise<HeroHandle> {
     gloveGripL,
     gloveGripR,
     setHurt,
+    setFps,
     update,
     applyCombat,
     applySlash,

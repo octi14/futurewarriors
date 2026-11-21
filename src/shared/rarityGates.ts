@@ -1,9 +1,16 @@
 import type {
   ArmorParams,
+  AxeParams,
   BootsParams,
+  ClubParams,
   GlovesParams,
   HelmetParams,
   PantsParams,
+  ShieldParams,
+  SwordParams,
+  ThrowParams,
+  BowParams,
+  CrossbowParams,
   Rarity,
 } from "./types";
 import { rarityRank } from "./rng";
@@ -44,116 +51,181 @@ const FULL: RarityRange = [1, RARITY_LEVEL_MAX];
 
 /** Armadura: ropa liviana abajo; metal / placas solo rarezas altas. */
 export const ARMOR_RARITY: Partial<Record<ArmorParams["style"], RarityRange>> = {
-  shirt: [1, 4],
-  hoodie: [1, 5],
-  tunic: [2, 5],
-  jacket: [2, 6],
-  coat: [3, 6],
-  duster: [3, 7],
-  poncho: [2, 5],
-  tabard: [3, 6],
-  vest: [4, 7],
-  leather: [4, 7],
-  padded: [4, 7],
-  gambeson: [4, 7],
-  brigandine: [5, 8],
-  chain: [5, 8],
-  hauberk: [5, 8],
-  scale: [6, 8],
-  lamellar: [6, 8],
-  plate: [7, 8],
-  cuirass: [7, 8],
-  jersey: [1, 5],
-  snow: [3, 7],
-  leatherJacket: [3, 7],
-  swat: [7, 8],
+  shirt: [1, 4], // remera
+  hoodie: [1, 3], // buzo con capucha
+  tunic: [3, 4], // túnica
+  jacket: [2, 4], // campera
+  coat: [2, 4], // sobretodo
+  duster: [1, 3], // guardapolvo
+  poncho: [2, 4], // poncho
+  tabard: [3, 6], // tabardo
+  vest: [4, 7], // chaleco
+  leather: [3, 5], // cuero
+  padded: [4, 7], // acolchada
+  gambeson: [4, 7], // gambesón
+  brigandine: [5, 8], // brigantina
+  chain: [6, 8], // cota de malla
+  hauberk: [7, 8], // cota larga de malla
+  scale: [6, 8], // escamas
+  lamellar: [6, 8], // lamelar
+  plate: [7, 8], // placas
+  cuirass: [7, 8], // coraza
+  jersey: [1, 2], // camiseta
+  snow: [3, 6], // campera de nieve
+  leatherJacket: [3, 5], // campera de cuero
+  swat: [7, 8], // chaleco táctico
+};
+
+/** Espadas: hoja común abajo; ancha / katana / sable arriba. */
+export const SWORD_RARITY: Partial<Record<SwordParams["bladeType"], RarityRange>> = {
+  straight: [4, 8], // recta
+  curved: [4, 6], // curva
+  foil: [3, 5], // florete
+  wide: [6, 8], // ancha
+  katana: [5, 8], // katana
+  saber: [6, 8], // sable
+};
+
+/** Hachas: barba abajo; doble filo arriba. */
+export const AXE_RARITY: Partial<Record<AxeParams["headStyle"], RarityRange>> = {
+  bearded: [5, 8], // de barba
+  broad: [4, 7], // ancha
+  double: [5, 8], // doble filo
+};
+
+/** Arcos: arco abajo; ballesta arriba. */
+export const BOW_RARITY: Partial<Record<BowParams["subtype"], RarityRange>> = {
+  bow: [5, 8], // arco
+};
+
+/** Ballistas: ballesta abajo. */
+export const CROSSBOW_RARITY: Partial<Record<CrossbowParams["subtype"], RarityRange>> = {
+  crossbow: [6, 8], // ballesta
+};
+
+/** Contundentes: palo / sartén abajo; palanca y nunchaku arriba. */
+export const CLUB_RARITY: Partial<Record<ClubParams["subtype"], RarityRange>> = {
+  stick: [2, 4], // palo
+  bat: [2, 4], // bate
+  pan: [1, 2], // sartén
+  pipe: [2, 4], // caño
+  scissors: [1, 2], // tijera
+  crowbar: [3, 4], // palanca
+  nunchaku: [4, 6], // nunchaku
+};
+
+/** Arrojadizas: honda y daga abajo; bazooka solo legendary. */
+export const THROW_RARITY: Partial<Record<ThrowParams["subtype"], RarityRange>> = {
+  slingshot: [1, 1], // honda
+  throwingDagger: [3, 5], // daga arrojadiza
+  throwingAxe: [3, 6], // hacha arrojadiza
+  boleadora: [3, 6], // boleadora
+  shuriken: [4, 7], // shuriken
+  javelin: [4, 7], // jabalina
+  molotov: [2, 3], // molotov
+  tearGas: [3, 4], // gas lacrimógeno
+  bazooka: [8, 8], // bazooka
+};
+
+/** Escudos: tapa / postigo abajo; torre y pavés arriba. */
+export const SHIELD_RARITY: Partial<Record<ShieldParams["shape"], RarityRange>> = {
+  lid: [1, 3], // tapa
+  shutter: [1, 4], // postigo
+  door: [1, 3], // puerta
+  buckler: [2, 5], // broquel
+  round: [3, 6], // redondo
+  targe: [3, 6], // tarja
+  heater: [4, 7], // de corazón
+  kite: [4, 7], // de cometa
+  tower: [6, 8], // torre
+  pavise: [7, 8], // pavés
 };
 
 /** Botas: crocs/ojotas abajo; plate/greaves solo epic–legendary. */
 export const BOOT_RARITY: Partial<Record<BootsParams["style"], RarityRange>> = {
-  crocs: [1, 2],
-  sandal: [1, 3],
-  canvas: [2, 4],
-  sport: [2, 5],
-  sneaker: [2, 5],
-  loafer: [3, 6],
-  oxford: [3, 6],
-  dress: [4, 7],
-  work: [4, 6],
-  military: [4, 7],
-  combat: [5, 8],
-  trail: [5, 8],
-  riding: [5, 8],
-  ski: [6, 8],
-  greaves: [6, 7],
-  plate: [7, 8],
-  cleats: [2, 6],
+  crocs: [1, 1], // crocs
+  sandal: [1, 2], // ojota
+  canvas: [1, 3], // zapatillas de lona
+  sport: [3, 3], // deportivas
+  sneaker: [2, 3], // zapatillas
+  loafer: [2, 4], // mocasín
+  oxford: [3, 6], // oxford
+  dress: [4, 7], // de vestir
+  work: [2, 5], // de trabajo
+  military: [4, 7], // militares
+  combat: [5, 8], // de combate
+  trail: [5, 8], // de trekking
+  riding: [5, 8], // de montar
+  ski: [6, 8], // de esquí
+  greaves: [6, 7], // grebas
+  plate: [7, 8], // de placa
+  cleats: [2, 6], // botines
 };
 
 /** Cascos: tela/gorros abajo; yelmos cerrados epic+; crown/bucket solo legendary. */
 export const HELMET_RARITY: Partial<Record<HelmetParams["style"], RarityRange>> = {
-  bandana: [1, 3],
-  beanie: [1, 4],
-  beret: [2, 5],
-  cap: [2, 5],
-  cowboy: [2, 5],
-  ushanka: [3, 6],
-  turban: [3, 6],
-  coif: [4, 7],
-  construction: [4, 6],
-  bike: [4, 7],
-  moto: [5, 8],
-  racing: [5, 8],
-  pilot: [5, 8],
-  nasal: [4, 7],
-  kettle: [4, 7],
-  morion: [5, 8],
-  sallet: [5, 8],
-  barbute: [6, 8],
-  bascinet: [6, 8],
-  full: [7, 8],
-  great: [7, 8],
-  horned: [7, 8],
-  riot: [7, 8],
-  bucket: [8, 8],
-  crown: [8, 8],
-  earmuffs: [1, 4],
-  ballcap: [1, 5],
-  gasmask: [4, 7],
-  f1: [4, 8],
-  nasa: [5, 8],
-  swat: [7, 8],
+  bandana: [1, 2], // bandana
+  beanie: [1, 2], // gorro de lana
+  beret: [1, 2], // boina
+  cap: [1, 1], // gorra
+  cowboy: [2, 3], // sombrero de vaquero
+  ushanka: [2, 5], // gorro ruso
+  turban: [2, 3], // turbante
+  coif: [4, 7], // cofia de malla
+  construction: [3, 4], // casco de obra
+  bike: [3, 5], // casco de bici
+  moto: [4, 6], // casco de moto
+  racing: [4, 6], // casco de carreras
+  pilot: [4, 6], // casco de piloto
+  nasal: [4, 7], // yelmo nasal
+  kettle: [2, 4], // capelina
+  morion: [5, 8], // morrión
+  sallet: [5, 8], // celada
+  barbute: [6, 8], // barbuta
+  bascinet: [6, 8], // bacinete
+  full: [7, 8], // yelmo cerrado
+  great: [8, 8], // gran yelmo
+  horned: [7, 8], // yelmo con cuernos
+  riot: [6, 8], // casco antidisturbios
+  bucket: [5, 7], // yelmo de cubo
+  crown: [8, 8], // corona
+  earmuffs: [1, 1], // orejeras
+  ballcap: [1, 2], // gorra de béisbol
+  gasmask: [5, 7], // máscara de gas
+  f1: [5, 7], // casco de Fórmula 1
+  nasa: [5, 7], // casco de astronauta
+  swat: [7, 8], // casco táctico
 };
 
 /** Pantalones: shorts/tela abajo; plated solo epic–legendary. */
 export const PANTS_RARITY: Partial<Record<PantsParams["style"], RarityRange>> = {
-  shorts: [1, 3],
-  cloth: [1, 4],
-  jogger: [2, 5],
-  jeans: [2, 5],
-  kilt: [2, 5],
-  breeches: [3, 6],
-  fatigues: [3, 6],
-  cargo: [3, 7],
-  chaps: [4, 7],
-  leather: [4, 7],
-  plated: [7, 8],
-  football: [2, 5],
-  armored: [7, 8],
+  shorts: [1, 2], // shorts
+  cloth: [1, 3], // de tela
+  jogger: [1, 2], // jogging
+  jeans: [2, 4], // jeans
+  kilt: [1, 2], // falda escocesa
+  breeches: [1, 3], // calzas
+  fatigues: [4, 7], // pantalón militar
+  cargo: [3, 7], // cargo
+  chaps: [2, 3], // chaparreras
+  leather: [4, 6], // de cuero
+  plated: [7, 8], // con placas
+  football: [2, 4], // de fútbol americano
+  armored: [7, 8], // blindados
 };
 
 /** Guantes: cloth/wraps abajo; gauntlet rare–legendary. */
 export const GLOVE_RARITY: Partial<Record<GlovesParams["style"], RarityRange>> = {
-  cloth: [1, 4],
-  wraps: [1, 4],
-  mittens: [2, 5],
-  leather: [2, 6],
-  bracers: [4, 7],
-  gauntlet: [5, 8],
-  boxing: [2, 6],
-  keeper: [2, 6],
-  rubber: [1, 4],
-  claws: [5, 8],
+  cloth: [1, 3], // de tela
+  wraps: [1, 3], // vendas
+  mittens: [1, 3], // manoplas
+  leather: [2, 4], // de cuero
+  bracers: [4, 7], // brazales
+  gauntlet: [5, 8], // guantelete
+  boxing: [3, 5], // de boxeo
+  keeper: [2, 3], // de arquero
+  rubber: [1, 1], // de goma
+  claws: [2, 3], // garras
 };
 
 /**

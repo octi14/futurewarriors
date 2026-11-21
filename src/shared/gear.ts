@@ -2,10 +2,16 @@ import { rollElement, withElementStats } from "./elements";
 import { fillRarityAdj, pickRarity, rarityMult, rngFromSeed } from "./rng";
 import {
   ARMOR_RARITY,
+  AXE_RARITY,
   BOOT_RARITY,
+  CLUB_RARITY,
   HELMET_RARITY,
   PANTS_RARITY,
   GLOVE_RARITY,
+  SHIELD_RARITY,
+  THROW_RARITY,
+  BOW_RARITY,
+  CROSSBOW_RARITY,
   pickStyleForRarity,
 } from "./rarityGates";
 import { EASTER_EGGS } from "./uniqueCatalog";
@@ -66,8 +72,8 @@ const emptyCombat = (): Pick<ItemStats, "damage" | "reach" | "attackSpeed" | "wi
 });
 
 const bootAdj = fillRarityAdj(
-  ["Gastadas", "Rústicas", "Pesadas"],
-  ["Ágiles", "Firmes", "Ligeras"],
+  ["Gastadas", "Rústicas", "Viejas", "Dañadas", "Débiles", "Inferiores"],
+  ["Aceptables", "Tranquilas", "Ligeras"],
   ["Veloces", "Sombra", "Caminantes"],
   ["Aladas", "Tempestad", "Errantes"],
   { legendary: ["Aladas", "Etéreas", "Errantes"], mythic: ["Celestes", "Infinitas", "Umbrales"] },
@@ -267,7 +273,12 @@ export function createBootsItem(seed: number): ItemInstance {
 export function createShieldItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
-  const genre = pickStyle(r, SHIELD_VISUAL);
+  const genre = pickStyleForRarity(
+    r,
+    Object.keys(SHIELD_VISUAL) as ShieldParams["shape"][],
+    rarity,
+    SHIELD_RARITY,
+  );
   const shape = shieldVisual(genre);
   const matRoll = r();
   const material: ShieldParams["material"] =
@@ -884,16 +895,12 @@ export function createAxeItem(seed: number, small = false, twoHand?: boolean): I
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
   const want2h = !small && (twoHand ?? r() < 0.4);
-  const styleRoll = r();
-  const headStyle: AxeParams["headStyle"] = small
-    ? styleRoll < 0.6
-      ? "bearded"
-      : "broad"
-    : styleRoll < 0.4
-      ? "bearded"
-      : styleRoll < 0.75
-        ? "broad"
-        : "double";
+  const headStyle = pickStyleForRarity(
+    r,
+    small ? ["bearded", "broad"] : ["bearded", "broad", "double"],
+    rarity,
+    AXE_RARITY,
+  );
   const params: AxeParams = {
     seed,
     headStyle,
@@ -959,7 +966,7 @@ export function createClubItem(seed: number): ItemInstance {
     "scissors",
     "pan",
   ];
-  const subtype = subtypes[Math.floor(r() * subtypes.length)]!;
+  const subtype = pickStyleForRarity(r, subtypes, rarity, CLUB_RARITY);
   const params: ClubParams = {
     seed,
     subtype,
@@ -1078,9 +1085,7 @@ export function createThrowItem(seed: number): ItemInstance {
     "molotov",
     "tearGas",
   ];
-  // Bazooka solo legendary (nivel 8)
-  let subtype = subtypes[Math.floor(r() * subtypes.length)]!;
-  if (rarity === "legendary" && r() < 0.35) subtype = "bazooka";
+  const subtype = pickStyleForRarity(r, [...subtypes, "bazooka"], rarity, THROW_RARITY);
   const params: ThrowParams = {
     seed,
     subtype,
@@ -1186,8 +1191,10 @@ export function createThrowItem(seed: number): ItemInstance {
 export function createBowItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
+  const subtype = pickStyleForRarity(r, ["bow"], rarity, BOW_RARITY);
   const params: BowParams = {
     seed,
+    subtype,
     draw: 0.55 + r() * 0.45,
     limbCurve: 0.35 + r() * 0.5,
     metalHue: r(),
@@ -1224,8 +1231,10 @@ export function createBowItem(seed: number): ItemInstance {
 export function createCrossbowItem(seed: number): ItemInstance {
   const r = rngFromSeed(seed);
   const rarity = pickRarity(r);
+  const subtype = pickStyleForRarity(r, ["crossbow"], rarity, CROSSBOW_RARITY);
   const params: CrossbowParams = {
     seed,
+    subtype,
     power: 0.5 + r() * 0.5,
     stockLength: 0.45 + r() * 0.35,
     metalHue: r(),

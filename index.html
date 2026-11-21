@@ -530,6 +530,35 @@
       #tooltip .tt-meta { opacity: 0.7; text-transform: uppercase; font-size: 10px; margin-bottom: 8px; }
       #tooltip .tt-stat { margin: 2px 0; }
       #tooltip .tt-hint { margin-top: 8px; opacity: 0.55; font-size: 11px; }
+      #view-btn {
+        pointer-events: auto;
+        position: absolute; top: max(12px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left));
+        z-index: 6;
+        min-width: 44px; min-height: 44px;
+        padding: 0 12px;
+        border-radius: 4px;
+        border: 1px solid rgba(196, 165, 116, 0.55);
+        background: rgba(42, 28, 16, 0.9);
+        color: #e8dcc4;
+        font: 700 15px/1 "Cinzel", Palatino, serif;
+        cursor: pointer;
+      }
+      #view-btn[aria-pressed="true"] { background: rgba(90, 58, 28, 0.95); }
+      #fps-cross {
+        display: none;
+        position: absolute; left: 50%; top: 50%;
+        width: 14px; height: 14px;
+        transform: translate(-50%, -50%);
+        pointer-events: none; z-index: 4;
+      }
+      #fps-cross::before, #fps-cross::after {
+        content: ""; position: absolute; background: #f2ead8;
+        box-shadow: 0 0 2px #000;
+      }
+      #fps-cross::before { left: 6px; top: 0; width: 2px; height: 14px; }
+      #fps-cross::after { top: 6px; left: 0; width: 14px; height: 2px; }
+      body.fps #fps-cross { display: block; }
+      body.fps.ui-open #fps-cross { display: none; }
       #help {
         position: absolute; top: 12px; right: 12px;
         padding: 10px 14px; border-radius: 4px; font-size: 12px; line-height: 1.5;
@@ -561,6 +590,8 @@
   <body>
     <div id="app">
       <div id="hud">
+        <button type="button" id="view-btn" aria-pressed="false" aria-label="Primera persona">1ª</button>
+        <div id="fps-cross"></div>
         <div id="combat-hud" aria-label="Vida y energía">
           <div class="orb orb-hp">
             <div class="orb-frame">
@@ -593,6 +624,7 @@
           <div><b>C</b> personaje / stats</div>
           <div><b>Shift+click</b> tirar ítem</div>
           <div><b>E</b> recoger loot</div>
+          <div><b>V</b> o <b>1ª</b> primera persona</div>
           <div><a href="/preview.html" style="color:#c4a574">Preview personaje</a></div>
         </div>
         <div id="inv" class="panel"></div>
