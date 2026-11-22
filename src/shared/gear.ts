@@ -1,18 +1,26 @@
 import { rollElement, withElementStats } from "./elements";
+import { stampItem } from "./affixes";
 import { fillRarityAdj, pickRarity, rarityMult, rngFromSeed } from "./rng";
 import {
+  AMULET_RARITY,
   ARMOR_RARITY,
   AXE_RARITY,
+  BELT_RARITY,
   BOOT_RARITY,
   CLUB_RARITY,
   HELMET_RARITY,
   PANTS_RARITY,
   GLOVE_RARITY,
+  RING_RARITY,
   SHIELD_RARITY,
   THROW_RARITY,
   BOW_RARITY,
   CROSSBOW_RARITY,
-  pickStyleForRarity,
+  SWORD_RARITY,
+  hasItemAt,
+  resolveItem,
+  styleAllowed,
+  DAGGER_RARITY,
 } from "./rarityGates";
 import { EASTER_EGGS } from "./uniqueCatalog";
 import { createDaggerItem, createSwordItem, nextItemId, randomSwordSeed } from "./swords";
@@ -28,7 +36,6 @@ import {
   bootVisual,
   gloveVisual,
   pantsVisual,
-  pickStyle,
   shieldVisual,
 } from "./presets";
 import type {
@@ -153,15 +160,12 @@ const crossbowAdj = fillRarityAdj(
   { legendary: ["Eterna", "Asedio", "Titánica"], mythic: ["Primordial", "Cósmica", "Absoluta", "Sagrada", "Suprema"] },
 );
 
-export function createBootsItem(seed: number): ItemInstance {
+export function createBootsItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
-  const genre: BootsParams["style"] = pickStyleForRarity(
-    r,
-    Object.keys(BOOT_VISUAL) as BootsParams["style"][],
-    rarity,
-    BOOT_RARITY,
-  );
+  const picked = resolveItem(r, Object.keys(BOOT_VISUAL) as BootsParams["style"][], BOOT_RARITY, rarityIn);
+  if (!picked) return null;
+  const genre = picked.item;
+  const rarity = picked.rarity;
   const style = bootVisual(genre);
   const metalRoll = r();
   const metalTone: BootsParams["metalTone"] =
@@ -225,10 +229,10 @@ export function createBootsItem(seed: number): ItemInstance {
             ? 1.08 + r() * 0.1
             : 1.02 + r() * 0.06;
   const extraNouns: Partial<Record<BootsParams["style"], string[]>> = {
-    sneaker: ["Sneakers", "Zapatillas urbanas"],
-    sandal: ["Sandalias", "Ojotas"],
-    loafer: ["Mocasines", "Zapatos de vestir"],
-    oxford: ["Oxfords", "Zapatos de cuero"],
+    sneaker: ["Zapatillas"],
+    sandal: ["Ojotas"],
+    loafer: ["Mocasines"],
+    oxford: ["Zapatos oxford"],
     riding: ["Botas de montar", "Botas de equitación"],
     dress: ["Botines", "Botas de gala"],
     work: ["Botas de trabajo", "Botas de obra"],
@@ -238,7 +242,7 @@ export function createBootsItem(seed: number): ItemInstance {
   };
   const nouns =
     extraNouns[genre] ??
-    style === "canvas"
+    (style === "canvas"
       ? ["Zapatillas de lona", "Lonas", "Zapatillas"]
       : style === "sport"
         ? ["Zapatillas deportivas", "Runners", "Trainers"]
@@ -254,8 +258,8 @@ export function createBootsItem(seed: number): ItemInstance {
                   ? ["Escarpes dorados", "Botas de placas", "Botas reales"]
                   : metalTone === "copper"
                     ? ["Escarpes cobrizos", "Botas de bronce", "Botas herradas"]
-                    : ["Botas de placa", "Escarpes de acero", "Botas blindadas"];
-  return {
+                    : ["Botas de placa", "Escarpes de acero", "Botas blindadas"]);
+  return stampItem({
     id: nextItemId(seed),
     kind: "boots",
     equipSlot: "boots",
@@ -271,21 +275,18 @@ export function createBootsItem(seed: number): ItemInstance {
     name: pickName(seed, rarity, bootAdj, nouns),
     gridW: 2,
     gridH: 2,
-  };
+  }, r);
 }
 
-export function createShieldItem(seed: number): ItemInstance {
+export function createShieldItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
-  const genre = pickStyleForRarity(
-    r,
-    Object.keys(SHIELD_VISUAL) as ShieldParams["shape"][],
-    rarity,
-    SHIELD_RARITY,
-  );
+  const picked = resolveItem(r, Object.keys(SHIELD_VISUAL) as ShieldParams["shape"][], SHIELD_RARITY, rarityIn);
+  if (!picked) return null;
+  const genre = picked.item;
+  const rarity = picked.rarity;
   const shape = shieldVisual(genre);
   const matRoll = r();
-  const material: ShieldParams["material"] =
+  let material: ShieldParams["material"] =
     matRoll < 0.28
       ? "wood"
       : matRoll < 0.48
@@ -301,6 +302,7 @@ export function createShieldItem(seed: number): ItemInstance {
                 : matRoll < 0.97
                   ? "obsidian"
                   : "adamantium";
+  if (genre === "lid" || genre === "door" || genre === "cymbal") material = "sheet";
   const params: ShieldParams = {
     seed,
     shape: genre,
@@ -332,9 +334,10 @@ export function createShieldItem(seed: number): ItemInstance {
     targe: ["Targe", "Rodela"],
     tower: ["Escudo torre", "Escudo de infantería"],
     pavise: ["Pavés", "Escudo de asedio"],
-    lid: ["Tapa de cubo", "Tapa de basura"],
+    lid: ["Tapa de tacho", "Tapa de basura"],
     door: ["Puerta chica", "Puertita de metal"],
     shutter: ["Postigo", "Postigo de madera"],
+    cymbal: ["Platillo"],
   };
   const nouns =
     shapeNouns[genre] ??
@@ -351,7 +354,7 @@ export function createShieldItem(seed: number): ItemInstance {
               : material === "reinforced"
                 ? ["Escudo reforzado", "Broquel herrado"]
                 : ["Escudo de madera", "Broquel"]);
-  return {
+  return stampItem({
     id: nextItemId(seed),
     kind: "shield",
     equipSlot: "offhand",
@@ -370,8 +373,8 @@ export function createShieldItem(seed: number): ItemInstance {
     },
     name: pickName(seed, rarity, shieldAdj, nouns),
     gridW: 2,
-    gridH: shape === "kite" || shape === "door" ? 3 : 2,
-  };
+    gridH: shape === "kite" || shape === "door" || shape === "cymbal" ? 3 : 2,
+  }, r);
 }
 
 const HELMET_GENRE: Record<
@@ -405,17 +408,25 @@ const HELMET_GENRE: Record<
   bucket: { nouns: ["Yelmo de cubo", "Casco de cubo"], cover: 1.45, slow: true },
   swat: { nouns: ["Casco SWAT", "Casco táctico"], cover: 1.4, hard: true, slow: true },
   gasmask: { nouns: ["Máscara de gas", "Respirador"], cover: 1.1, hard: true },
-  nasa: { nouns: ["Casco espacial", "Casco NASA"], cover: 1.45, hard: true, slow: true },
+  nasa: { nouns: ["Casco de astronauta", "Casco espacial"], cover: 1.45, hard: true, slow: true },
   f1: { nouns: ["Casco de F1", "Casco de motorsport"], cover: 1.35, hard: true },
   earmuffs: { nouns: ["Orejeras", "Protectores auditivos"], cover: 0.45, cloth: true },
   ballcap: { nouns: ["Gorra", "Gorra deportiva"], cover: 0.5, cloth: true },
+  diving: { nouns: ["Casco de buzo", "Escafandra"], cover: 1.4, hard: true, slow: true },
+  football: { nouns: ["Casco de fútbol americano", "Casco de fútbol"], cover: 1.15, hard: true },
+  mask: { nouns: ["Barbijo", "Tapabocas"], cover: 0.35, cloth: true },
+  chef: { nouns: ["Gorro de cocina", "Gorro de chef"], cover: 0.4, cloth: true },
+  tophat: { nouns: ["Galera", "Sombrero de copa"], cover: 0.55, cloth: true },
+  mortar: { nouns: ["Birrete", "Birrete académico"], cover: 0.45, cloth: true },
 };
 
-export function createHelmetItem(seed: number): ItemInstance {
+export function createHelmetItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
   const styles = Object.keys(HELMET_GENRE) as HelmetParams["style"][];
-  const style = pickStyleForRarity(r, styles, rarity, HELMET_RARITY);
+  const picked = resolveItem(r, styles, HELMET_RARITY, rarityIn);
+  if (!picked) return null;
+  const style = picked.item;
+  const rarity = picked.rarity;
   const genre = HELMET_GENRE[style];
   const matRoll = r();
   const material: HelmetParams["material"] = genre.cloth
@@ -452,7 +463,7 @@ export function createHelmetItem(seed: number): ItemInstance {
           ? 1.05
           : 0.85;
   const nouns = genre.nouns;
-  return {
+  return stampItem({
     id: nextItemId(seed),
     kind: "helmet",
     equipSlot: "helmet",
@@ -467,18 +478,15 @@ export function createHelmetItem(seed: number): ItemInstance {
     name: pickName(seed, rarity, helmAdj, nouns),
     gridW: 2,
     gridH: 2,
-  };
+  }, r);
 }
 
-export function createArmorItem(seed: number): ItemInstance {
+export function createArmorItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
-  const genre = pickStyleForRarity(
-    r,
-    Object.keys(ARMOR_VISUAL) as ArmorParams["style"][],
-    rarity,
-    ARMOR_RARITY,
-  );
+  const picked = resolveItem(r, Object.keys(ARMOR_VISUAL) as ArmorParams["style"][], ARMOR_RARITY, rarityIn);
+  if (!picked) return null;
+  const genre = picked.item;
+  const rarity = picked.rarity;
   const style = armorVisual(genre);
   const sleeves: ArmorParams["sleeves"] =
     style === "vest" ? "none" : r() < 0.42 ? "short" : "long";
@@ -637,7 +645,7 @@ export function createArmorItem(seed: number): ItemInstance {
   };
   const nouns =
     extraNouns[genre] ??
-    style === "hoodie"
+    (style === "hoodie"
       ? ["Buzo", "Hoodie", "Canguro"]
       : style === "jacket"
         ? ["Campera", "Chaqueta", "Campera con cierre"]
@@ -651,8 +659,8 @@ export function createArmorItem(seed: number): ItemInstance {
                 ? ["Cota de malla", "Anillas", "Hauberk"]
                 : style === "padded"
                   ? ["Gambesón", "Acolchado", "Jubón"]
-                  : ["Cuero", "Peto de cuero", "Jaco"];
-  return {
+                  : ["Cuero", "Peto de cuero", "Jaco"]);
+  return stampItem({
     id: nextItemId(seed),
     kind: "armor",
     equipSlot: "armor",
@@ -674,18 +682,15 @@ export function createArmorItem(seed: number): ItemInstance {
     name: pickName(seed, rarity, armorAdj, nouns),
     gridW: 2,
     gridH: 3,
-  };
+  }, r);
 }
 
-export function createPantsItem(seed: number): ItemInstance {
+export function createPantsItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
-  const genre = pickStyleForRarity(
-    r,
-    Object.keys(PANTS_VISUAL) as PantsParams["style"][],
-    rarity,
-    PANTS_RARITY,
-  );
+  const picked = resolveItem(r, Object.keys(PANTS_VISUAL) as PantsParams["style"][], PANTS_RARITY, rarityIn);
+  if (!picked) return null;
+  const genre = picked.item;
+  const rarity = picked.rarity;
   const style = pantsVisual(genre);
   const pockets =
     style === "cargo"
@@ -742,7 +747,7 @@ export function createPantsItem(seed: number): ItemInstance {
   };
   const nouns =
     extraNouns[genre] ??
-    style === "jeans"
+    (style === "jeans"
       ? ["Jeans", "Denim", "Vaqueros"]
       : style === "jogger"
         ? ["Joggers", "Pantalón suelto", "Pants"]
@@ -752,8 +757,8 @@ export function createPantsItem(seed: number): ItemInstance {
             ? ["Calzas blindadas", "Pantalón de placas", "Grebas largas"]
             : style === "leather"
               ? ["Calzas de cuero", "Pantalón de cuero", "Bragas"]
-              : ["Pantalones", "Calzas", "Pantalón de tela"];
-  return {
+              : ["Pantalones", "Calzas", "Pantalón de tela"]);
+  return stampItem({
     id: nextItemId(seed),
     kind: "pants",
     equipSlot: "pants",
@@ -775,18 +780,15 @@ export function createPantsItem(seed: number): ItemInstance {
     name: pickName(seed, rarity, pantsAdj, nouns),
     gridW: 2,
     gridH: 2,
-  };
+  }, r);
 }
 
-export function createGlovesItem(seed: number): ItemInstance {
+export function createGlovesItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
-  const genre = pickStyleForRarity(
-    r,
-    Object.keys(GLOVE_VISUAL) as GlovesParams["style"][],
-    rarity,
-    GLOVE_RARITY,
-  );
+  const picked = resolveItem(r, Object.keys(GLOVE_VISUAL) as GlovesParams["style"][], GLOVE_RARITY, rarityIn);
+  if (!picked) return null;
+  const genre = picked.item;
+  const rarity = picked.rarity;
   const style = gloveVisual(genre);
   const params: GlovesParams = {
     seed,
@@ -805,7 +807,7 @@ export function createGlovesItem(seed: number): ItemInstance {
   };
   const m = rarityMult(rarity);
   const claws = style === "claws";
-  return {
+  return stampItem({
     id: nextItemId(seed),
     kind: "gloves",
     equipSlot: "gloves",
@@ -818,11 +820,12 @@ export function createGlovesItem(seed: number): ItemInstance {
           ? Math.round(1.5 * m * 10) / 10
           : 0,
       reach: claws ? 0.15 : 0,
-      attackSpeed: claws ? 1.25 : style === "cloth" ? 1.06 : style === "leather" ? 1.03 : 0.98,
+      attackSpeed: 0,
       windup: 0,
       armor: style === "gauntlet" ? Math.round(2 * m * 10) / 10 : Math.round(0.5 * m * 10) / 10,
       moveSpeedMult: 1,
       maxHpBonus: 0,
+      attackSpeedPct: claws ? 12 : undefined,
       // Garras: alta chance de herida abierta (solo se aplica en combate desarmado)
       woundChance: claws ? Math.min(0.72, 0.42 + m * 0.08) : undefined,
     },
@@ -850,13 +853,15 @@ export function createGlovesItem(seed: number): ItemInstance {
     ),
     gridW: 2,
     gridH: 2,
-  };
+  }, r);
 }
 
-export function createBeltItem(seed: number): ItemInstance {
+export function createBeltItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
-  const genre = pickStyle(r, BELT_VISUAL);
+  const picked = resolveItem(r, Object.keys(BELT_VISUAL) as BeltParams["style"][], BELT_RARITY, rarityIn);
+  if (!picked) return null;
+  const genre = picked.item;
+  const rarity = picked.rarity;
   const style = beltVisual(genre);
   const params: BeltParams = {
     seed,
@@ -866,7 +871,7 @@ export function createBeltItem(seed: number): ItemInstance {
     rarity,
   };
   const m = rarityMult(rarity);
-  return {
+  return stampItem({
     id: nextItemId(seed),
     kind: "belt",
     equipSlot: "belt",
@@ -883,28 +888,30 @@ export function createBeltItem(seed: number): ItemInstance {
       rarity,
       beltAdj,
       genre === "sash"
-        ? ["Faja", "Banda"]
+        ? ["Faja"]
         : genre === "chainbelt"
-          ? ["Cinto de cadena", "Cinturón de eslabones"]
+          ? ["Cinto de cadena"]
           : genre === "utility"
-            ? ["Cinto táctico", "Cinturón de faena"]
-            : ["Cinturón", "Cinto"],
+            ? ["Cinto táctico"]
+            : genre === "rope"
+              ? ["Soga"]
+              : genre === "plated"
+                ? ["Cinto de placas"]
+                : ["Cinturón de cuero"],
     ),
     gridW: 2,
     gridH: 1,
-  };
+  }, r);
 }
 
-export function createAxeItem(seed: number, small = false, twoHand?: boolean): ItemInstance {
+export function createAxeItem(seed: number, small = false, twoHand?: boolean, rarityIn?: Rarity): ItemInstance | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
-  const want2h = !small && (twoHand ?? r() < 0.4);
-  const headStyle = pickStyleForRarity(
-    r,
-    small ? ["bearded", "broad"] : ["bearded", "broad", "double"],
-    rarity,
-    AXE_RARITY,
-  );
+  const heads: AxeParams["headStyle"][] = small ? ["bearded", "broad"] : ["bearded", "broad", "double"];
+  const picked = resolveItem(r, heads, AXE_RARITY, rarityIn);
+  if (!picked) return null;
+  const headStyle = picked.item;
+  const rarity = picked.rarity;
+  const want2h = !small && (twoHand ?? headStyle === "double");
   const params: AxeParams = {
     seed,
     headStyle,
@@ -917,7 +924,7 @@ export function createAxeItem(seed: number, small = false, twoHand?: boolean): I
   const dmg = (small ? 9 : 14) + params.headSize * (small ? 40 : 55) + params.haftLength * (small ? 6 : 10);
   const reach = 0.4 + params.haftLength * (small ? 0.7 : 0.85);
   const spd = Math.max(0.55, (small ? 1.55 : 1.35) - params.headSize * (small ? 1.6 : 2.2));
-  return {
+  return stampItem({
     id: nextItemId(seed),
     kind: "axe",
     equipSlot: "weapon",
@@ -939,15 +946,15 @@ export function createAxeItem(seed: number, small = false, twoHand?: boolean): I
       seed,
       rarity,
       axeAdj,
-      small ? ["Hacha chica"] : ["Hacha"],
+      small ? ["Hacha chica"] : headStyle === "bearded" ? ["Hacha de barba"] : headStyle === "double" ? ["Hacha doble"] : ["Hacha ancha"],
     ),
     gridW: small ? 1 : 2,
     gridH: small ? 2 : 3,
-  };
+  }, r);
 }
 
-export function createSmallAxeItem(seed: number): ItemInstance {
-  return createAxeItem(seed, true);
+export function createSmallAxeItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
+  return createAxeItem(seed, true, false, rarityIn);
 }
 
 const clubAdj = fillRarityAdj(
@@ -958,105 +965,101 @@ const clubAdj = fillRarityAdj(
   { legendary: ["Titánico", "Cataclísmico"], mythic: ["Primordial", "Absoluto"] },
 );
 
-export function createClubItem(seed: number): ItemInstance {
+const CLUB_NOUN: Record<ClubParams["subtype"], string> = {
+  bat: "Bate",
+  stick: "Palo",
+  pipe: "Caño",
+  crowbar: "Palanca",
+  nunchaku: "Nunchaku",
+  scissors: "Tijeras",
+  pan: "Sartén",
+  cleaver: "Cuchilla de cocina",
+  umbrella: "Paraguas",
+  bottle: "Botella de vidrio",
+  extinguisher: "Matafuegos",
+  rollingPin: "Palo de amasar",
+  chain: "Cadena",
+  skateboard: "Tabla de skate",
+  golf: "Palo de golf",
+  racket: "Raqueta de tenis",
+  hammer: "Martillo",
+  wrench: "Llave",
+  machete: "Machete",
+  pickaxe: "Pico",
+  shovel: "Pala",
+  bone: "Hueso",
+  selfie: "Palo de selfie",
+  gpu: "GeForce RTX 5090",
+  barreta: "Barreta",
+  rake: "Rastrillo",
+  o2tank: "Tubo de oxígeno",
+  anchor: "Ancla",
+  cricket: "Bate de cricket",
+  morningstar: "Estrella del alba",
+  whip: "Látigo",
+};
+
+const CLUB_SMALL = new Set<ClubParams["subtype"]>([
+  "scissors",
+  "nunchaku",
+  "bottle",
+  "wrench",
+  "hammer",
+  "cleaver",
+]);
+
+export function createClubItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
-  const subtypes: ClubParams["subtype"][] = [
-    "bat",
-    "stick",
-    "pipe",
-    "crowbar",
-    "nunchaku",
-    "scissors",
-    "pan",
-  ];
-  const subtype = pickStyleForRarity(r, subtypes, rarity, CLUB_RARITY);
+  const subtypes = Object.keys(CLUB_NOUN) as ClubParams["subtype"][];
+  const picked = resolveItem(r, subtypes, CLUB_RARITY, rarityIn);
+  if (!picked) return null;
+  const subtype = picked.item;
+  const rarity = picked.rarity;
+  const small = CLUB_SMALL.has(subtype);
+  const long = ["shovel", "rake", "golf", "anchor", "o2tank", "selfie", "whip", "morningstar", "pickaxe", "barreta", "umbrella", "skateboard"].includes(subtype);
   const params: ClubParams = {
     seed,
     subtype,
-    length:
-      subtype === "scissors"
-        ? 0.22 + r() * 0.08
-        : subtype === "pan"
-          ? 0.45 + r() * 0.12
-          : subtype === "nunchaku"
-            ? 0.55 + r() * 0.2
-            : subtype === "crowbar"
-              ? 0.7 + r() * 0.25
-              : 0.75 + r() * 0.45,
-    thickness:
-      subtype === "scissors"
-        ? 0.018 + r() * 0.01
-        : subtype === "pan"
-          ? 0.06 + r() * 0.03
-          : subtype === "pipe" || subtype === "crowbar"
-            ? 0.04 + r() * 0.025
-            : 0.035 + r() * 0.03,
+    length: small ? 0.28 + r() * 0.18 : long ? 0.95 + r() * 0.4 : 0.7 + r() * 0.35,
+    thickness: subtype === "scissors" || subtype === "whip" || subtype === "chain" ? 0.02 + r() * 0.01 : 0.04 + r() * 0.03,
     metalHue: r(),
     rarity,
   };
   const m = rarityMult(rarity);
-  const nouns: Record<ClubParams["subtype"], string[]> = {
-    bat: ["Bate", "Bate de béisbol"],
-    stick: ["Palo", "Garrote de madera"],
-    pipe: ["Caño", "Tubo de metal"],
-    crowbar: ["Gancho", "Palanca"],
-    nunchaku: ["Nunchaku", "Nunchakus"],
-    scissors: ["Tijeras", "Tijera"],
-    pan: ["Sartén", "Sartén de hierro"],
-  };
   const dmgBase =
-    subtype === "scissors"
-      ? 3.5
-      : subtype === "pan"
-        ? 10
-        : subtype === "nunchaku"
-          ? 9
-          : subtype === "stick"
-            ? 8
-            : subtype === "bat"
-              ? 11
-              : 12;
-  const spd =
-    subtype === "scissors"
-      ? 1.85
-      : subtype === "pan"
-        ? 1.05
-        : subtype === "nunchaku"
-          ? 1.55
-          : subtype === "stick"
-            ? 1.35
-            : subtype === "bat"
-              ? 1.15
-              : 1.05;
-  const reach =
-    subtype === "scissors"
-      ? 0.42 + params.length * 0.35
-      : subtype === "pan"
-        ? 0.7 + params.length * 0.35
-        : 0.55 + params.length * 0.85;
-  return {
-    id: nextItemId(seed),
-    kind: "club",
-    equipSlot: "weapon",
-    seed,
-    params,
-    stats: withElementStats(
-      {
-        damage: Math.round((dmgBase + params.length * (subtype === "scissors" ? 4 : 10) + params.thickness * 40) * m * 10) / 10,
-        reach: Math.round(reach * 100) / 100,
-        attackSpeed: Math.round(spd * 100) / 100,
-        windup: Math.round((subtype === "scissors" ? 0.06 : 0.1 + params.length * 0.08) * 100) / 100,
-        armor: 0,
-        moveSpeedMult: 1,
-        maxHpBonus: 0,
-      },
-      rollElement(r, rarity, true),
-    ),
-    name: pickName(seed, rarity, clubAdj, nouns[subtype]),
-    gridW: 1,
-    gridH: subtype === "nunchaku" || subtype === "scissors" ? 2 : 3,
-  };
+    subtype === "scissors" || subtype === "bottle" || subtype === "selfie"
+      ? 4
+      : subtype === "gpu" || subtype === "anchor" || subtype === "morningstar"
+        ? 16
+        : subtype === "pan" || subtype === "bat" || subtype === "cricket" || subtype === "shovel"
+          ? 11
+          : 9;
+  const spd = small ? 1.6 : long ? 0.95 : 1.15;
+  return stampItem(
+    {
+      id: nextItemId(seed),
+      kind: "club",
+      equipSlot: "weapon",
+      seed,
+      params,
+      stats: withElementStats(
+        {
+          damage: Math.round((dmgBase + params.length * 8 + params.thickness * 30) * m * 10) / 10,
+          reach: Math.round((0.5 + params.length * 0.7) * 100) / 100,
+          attackSpeed: Math.round(spd * 100) / 100,
+          windup: Math.round((small ? 0.07 : 0.12 + params.length * 0.05) * 100) / 100,
+          armor: 0,
+          moveSpeedMult: 1,
+          maxHpBonus: 0,
+        },
+        rollElement(r, rarity, true),
+      ),
+      name: pickName(seed, rarity, clubAdj, [CLUB_NOUN[subtype]]),
+      gridW: subtype === "skateboard" || subtype === "gpu" ? 2 : 1,
+      gridH: small ? 2 : 3,
+    },
+    r,
+  );
 }
 
 /** Armas cuerpo a cuerpo pequeñas (puñal / hacha corta), no arrojadizas ni a distancia. */
@@ -1071,14 +1074,13 @@ export function isDualWieldable(item: ItemInstance): boolean {
   }
   if (item.kind === "club") {
     const sub = (item.params as ClubParams).subtype;
-    return sub === "nunchaku" || sub === "scissors";
+    return CLUB_SMALL.has(sub);
   }
   return false;
 }
 
-export function createThrowItem(seed: number): ItemInstance {
+export function createThrowItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
   const subtypes: ThrowParams["subtype"][] = [
     "throwingAxe",
     "throwingDagger",
@@ -1088,8 +1090,12 @@ export function createThrowItem(seed: number): ItemInstance {
     "boleadora",
     "molotov",
     "tearGas",
+    "bazooka",
   ];
-  const subtype = pickStyleForRarity(r, [...subtypes, "bazooka"], rarity, THROW_RARITY);
+  const picked = resolveItem(r, subtypes, THROW_RARITY, rarityIn);
+  if (!picked) return null;
+  const subtype = picked.item;
+  const rarity = picked.rarity;
   const params: ThrowParams = {
     seed,
     subtype,
@@ -1168,7 +1174,7 @@ export function createThrowItem(seed: number): ItemInstance {
     gridH = 3;
     nouns = ["Jabalina", "Venablo"];
   }
-  return {
+  return stampItem({
     id: nextItemId(seed),
     kind: "throw",
     equipSlot: "weapon",
@@ -1189,13 +1195,15 @@ export function createThrowItem(seed: number): ItemInstance {
     name: pickName(seed, rarity, throwAdj, nouns),
     gridW,
     gridH,
-  };
+  }, r);
 }
 
-export function createBowItem(seed: number): ItemInstance {
+export function createBowItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
-  const subtype = pickStyleForRarity(r, ["bow"], rarity, BOW_RARITY);
+  const picked = resolveItem(r, ["bow"] as const, BOW_RARITY, rarityIn);
+  if (!picked) return null;
+  const subtype = picked.item;
+  const rarity = picked.rarity;
   const params: BowParams = {
     seed,
     subtype,
@@ -1208,7 +1216,7 @@ export function createBowItem(seed: number): ItemInstance {
   const damage = (7 + params.draw * 14) * m;
   const reach = 10 + params.draw * 4;
   const attackSpeed = Math.max(0.7, 1.35 - params.draw * 0.35);
-  return {
+  return stampItem({
     id: nextItemId(seed),
     kind: "bow",
     equipSlot: "weapon",
@@ -1226,16 +1234,18 @@ export function createBowItem(seed: number): ItemInstance {
       },
       rollElement(r, rarity, true),
     ),
-    name: pickName(seed, rarity, bowAdj, ["Arco", "Arco largo", "Arco de caza"]),
+    name: pickName(seed, rarity, bowAdj, ["Arco"]),
     gridW: 1,
     gridH: 4,
-  };
+  }, r);
 }
 
-export function createCrossbowItem(seed: number): ItemInstance {
+export function createCrossbowItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
-  const subtype = pickStyleForRarity(r, ["crossbow"], rarity, CROSSBOW_RARITY);
+  const picked = resolveItem(r, ["crossbow"] as const, CROSSBOW_RARITY, rarityIn);
+  if (!picked) return null;
+  const subtype = picked.item;
+  const rarity = picked.rarity;
   const params: CrossbowParams = {
     seed,
     subtype,
@@ -1248,7 +1258,7 @@ export function createCrossbowItem(seed: number): ItemInstance {
   const damage = (12 + params.power * 18) * m;
   const reach = 8.5 + params.power * 3;
   const attackSpeed = Math.max(0.45, 0.85 - params.power * 0.25);
-  return {
+  return stampItem({
     id: nextItemId(seed),
     kind: "crossbow",
     equipSlot: "weapon",
@@ -1266,10 +1276,10 @@ export function createCrossbowItem(seed: number): ItemInstance {
       },
       rollElement(r, rarity, true),
     ),
-    name: pickName(seed, rarity, crossbowAdj, ["Ballesta", "Ballesta pesada", "Ballesta de asedio"]),
+    name: pickName(seed, rarity, crossbowAdj, ["Ballesta"]),
     gridW: 2,
     gridH: 2,
-  };
+  }, r);
 }
 
 const ringAdj = fillRarityAdj(
@@ -1280,10 +1290,13 @@ const ringAdj = fillRarityAdj(
   { legendary: ["Estelar", "Eterno", "Arcano"], mythic: ["Primordial", "Cósmico", "Absoluto"] },
 );
 
-export function createRingItem(seed: number): ItemInstance {
+export function createRingItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
   const styles: RingParams["style"][] = ["band", "signet", "gem", "skull", "braided"];
+  const picked = resolveItem(r, styles, RING_RARITY, rarityIn);
+  if (!picked) return null;
+  const style = picked.item;
+  const rarity = picked.rarity;
   const gems: RingParams["gem"][] = [
     "none",
     "ruby",
@@ -1297,7 +1310,6 @@ export function createRingItem(seed: number): ItemInstance {
     "jet",
   ];
   const metals: RingParams["metalKind"][] = ["silver", "gold", "platinum", "bright"];
-  const style = styles[Math.floor(r() * styles.length)]!;
   const gem =
     style === "gem" || style === "signet"
       ? gems[1 + Math.floor(r() * (gems.length - 1))]!
@@ -1317,7 +1329,7 @@ export function createRingItem(seed: number): ItemInstance {
           : style === "gem"
             ? ["Anillo de gema", "Sortija"]
             : ["Anillo", "Banda", "Aro"];
-  return {
+  return stampItem({
     id: nextItemId(seed),
     kind: "ring",
     equipSlot: "ring1",
@@ -1328,7 +1340,7 @@ export function createRingItem(seed: number): ItemInstance {
         ...emptyCombat(),
         damage: style === "skull" ? Math.round(0.4 * m * 10) / 10 : 0,
         armor: style === "band" || style === "braided" ? Math.round(0.4 * m * 10) / 10 : 0,
-        attackSpeed: style === "signet" ? 1.04 : 1,
+        attackSpeed: 0,
         moveSpeedMult: 1,
         maxHpBonus: gem === "none" ? Math.round(4 * m) : Math.round(10 * m),
       },
@@ -1337,14 +1349,16 @@ export function createRingItem(seed: number): ItemInstance {
     name: pickName(seed, rarity, ringAdj, nouns),
     gridW: 1,
     gridH: 1,
-  };
+  }, r);
 }
 
-export function createAmuletItem(seed: number): ItemInstance {
+export function createAmuletItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
   const styles: AmuletParams["style"][] = ["pendant", "relic", "tooth", "medallion", "charm"];
-  const style = styles[Math.floor(r() * styles.length)]!;
+  const picked = resolveItem(r, styles, AMULET_RARITY, rarityIn);
+  if (!picked) return null;
+  const style = picked.item;
+  const rarity = picked.rarity;
   const params: AmuletParams = { seed, style, metalHue: r(), rarity };
   const m = rarityMult(rarity);
   const nouns =
@@ -1357,7 +1371,7 @@ export function createAmuletItem(seed: number): ItemInstance {
           : style === "charm"
             ? ["Dije", "Talismán"]
             : ["Amuleto", "Colgante", "Pendiente"];
-  return {
+  return stampItem({
     id: nextItemId(seed),
     kind: "amulet",
     equipSlot: "amulet",
@@ -1375,7 +1389,7 @@ export function createAmuletItem(seed: number): ItemInstance {
     name: pickName(seed, rarity, ringAdj, nouns),
     gridW: 1,
     gridH: 1,
-  };
+  }, r);
 }
 
 function tryEasterEggLoot(): ItemInstance | null {
@@ -1387,23 +1401,23 @@ function tryEasterEggLoot(): ItemInstance | null {
     const seed = randomSwordSeed();
     let item: ItemInstance;
     if (egg.kind === "helmet") {
-      item = createHelmetItem(seed);
+      item = createHelmetItem(seed)!;
       (item.params as HelmetParams).style = egg.style as HelmetParams["style"];
       (item.params as HelmetParams).rarity = egg.rarity;
     } else if (egg.kind === "boots") {
-      item = createBootsItem(seed);
+      item = createBootsItem(seed)!;
       (item.params as BootsParams).style = egg.style as BootsParams["style"];
       (item.params as BootsParams).rarity = egg.rarity;
     } else if (egg.kind === "armor") {
-      item = createArmorItem(seed);
+      item = createArmorItem(seed)!;
       (item.params as ArmorParams).style = egg.style as ArmorParams["style"];
       (item.params as ArmorParams).rarity = egg.rarity;
     } else if (egg.kind === "pants") {
-      item = createPantsItem(seed);
+      item = createPantsItem(seed)!;
       (item.params as PantsParams).style = egg.style as PantsParams["style"];
       (item.params as PantsParams).rarity = egg.rarity;
     } else {
-      item = createGlovesItem(seed);
+      item = createGlovesItem(seed)!;
       (item.params as GlovesParams).style = egg.style as GlovesParams["style"];
       (item.params as GlovesParams).rarity = egg.rarity;
     }
@@ -1419,22 +1433,38 @@ export function createRandomLootItem(): ItemInstance {
   const egg = tryEasterEggLoot();
   if (egg) return egg;
   const seed = randomSwordSeed();
-  const roll = Math.random();
-  if (roll < 0.09) return createSwordItem(seed);
-  if (roll < 0.15) return createDaggerItem(seed);
-  if (roll < 0.2) return createAxeItem(seed);
-  if (roll < 0.26) return createSmallAxeItem(seed);
-  if (roll < 0.34) return createClubItem(seed);
-  if (roll < 0.42) return createThrowItem(seed);
-  if (roll < 0.47) return createBowItem(seed);
-  if (roll < 0.52) return createCrossbowItem(seed);
-  if (roll < 0.6) return createArmorItem(seed);
-  if (roll < 0.67) return createPantsItem(seed);
-  if (roll < 0.74) return createHelmetItem(seed);
-  if (roll < 0.8) return createBootsItem(seed);
-  if (roll < 0.86) return createShieldItem(seed);
-  if (roll < 0.9) return createGlovesItem(seed);
-  if (roll < 0.94) return createBeltItem(seed);
-  if (roll < 0.97) return createRingItem(seed);
-  return createAmuletItem(seed);
+  const rarity = pickRarity(rngFromSeed(seed));
+  const options: { w: number; make: () => ItemInstance | null }[] = [];
+  const add = (w: number, ok: boolean, make: () => ItemInstance | null) => {
+    if (ok) options.push({ w, make });
+  };
+  add(0.09, hasItemAt(rarity, ["straight", "curved", "wide", "katana", "foil", "saber"], SWORD_RARITY), () => createSwordItem(seed, rarity));
+  add(0.06, styleAllowed(rarity, DAGGER_RARITY), () => createDaggerItem(seed, rarity));
+  add(0.05, hasItemAt(rarity, ["bearded", "broad", "double"], AXE_RARITY), () => createAxeItem(seed, false, undefined, rarity));
+  add(0.06, hasItemAt(rarity, ["bearded", "broad"], AXE_RARITY), () => createSmallAxeItem(seed, rarity));
+  add(0.08, hasItemAt(rarity, Object.keys(CLUB_NOUN) as ClubParams["subtype"][], CLUB_RARITY), () => createClubItem(seed, rarity));
+  add(0.08, hasItemAt(rarity, ["throwingAxe", "throwingDagger", "shuriken", "javelin", "slingshot", "boleadora", "molotov", "tearGas", "bazooka"], THROW_RARITY), () => createThrowItem(seed, rarity));
+  add(0.05, hasItemAt(rarity, ["bow"], BOW_RARITY), () => createBowItem(seed, rarity));
+  add(0.05, hasItemAt(rarity, ["crossbow"], CROSSBOW_RARITY), () => createCrossbowItem(seed, rarity));
+  add(0.08, hasItemAt(rarity, Object.keys(ARMOR_VISUAL) as ArmorParams["style"][], ARMOR_RARITY), () => createArmorItem(seed, rarity));
+  add(0.07, hasItemAt(rarity, Object.keys(PANTS_VISUAL) as PantsParams["style"][], PANTS_RARITY), () => createPantsItem(seed, rarity));
+  add(0.07, hasItemAt(rarity, Object.keys(HELMET_GENRE) as HelmetParams["style"][], HELMET_RARITY), () => createHelmetItem(seed, rarity));
+  add(0.06, hasItemAt(rarity, Object.keys(BOOT_VISUAL) as BootsParams["style"][], BOOT_RARITY), () => createBootsItem(seed, rarity));
+  add(0.06, hasItemAt(rarity, Object.keys(SHIELD_VISUAL) as ShieldParams["shape"][], SHIELD_RARITY), () => createShieldItem(seed, rarity));
+  add(0.04, hasItemAt(rarity, Object.keys(GLOVE_VISUAL) as GlovesParams["style"][], GLOVE_RARITY), () => createGlovesItem(seed, rarity));
+  add(0.04, hasItemAt(rarity, Object.keys(BELT_VISUAL) as BeltParams["style"][], BELT_RARITY), () => createBeltItem(seed, rarity));
+  add(0.03, hasItemAt(rarity, ["band", "signet", "gem", "skull", "braided"], RING_RARITY), () => createRingItem(seed, rarity));
+  add(0.03, hasItemAt(rarity, ["pendant", "relic", "tooth", "medallion", "charm"], AMULET_RARITY), () => createAmuletItem(seed, rarity));
+  let sum = 0;
+  for (const o of options) sum += o.w;
+  if (sum <= 0) return createBootsItem(seed)!;
+  let roll = Math.random() * sum;
+  for (const o of options) {
+    roll -= o.w;
+    if (roll > 0) continue;
+    const item = o.make();
+    if (item) return item;
+    break;
+  }
+  return createBootsItem(seed)!;
 }

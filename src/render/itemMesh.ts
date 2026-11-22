@@ -775,8 +775,13 @@ function buildShieldMesh(paramsIn: ShieldParams): THREE.Group {
   const face =
     mat === "plastic" ? plastic : isMetalish ? (mat === "sheet" ? sheet : metal) : wood;
   const sh = params.shape;
+  if (sh === "lid" || sh === "door") face.color.setHex(0xc5c9ce);
+  if (sh === "cymbal") face.color.setHex(0xd4af37);
   let body: THREE.Mesh;
-  if (sh === "round" || sh === "buckler" || sh === "targe" || sh === "lid") {
+  if (sh === "cymbal") {
+    body = new THREE.Mesh(new THREE.CylinderGeometry(params.width * 0.72, params.width * 0.72, 0.018, 24), face);
+    body.rotation.x = Math.PI / 2;
+  } else if (sh === "round" || sh === "buckler" || sh === "targe" || sh === "lid") {
     const r = params.width * (sh === "buckler" ? 0.38 : sh === "targe" ? 0.48 : sh === "lid" ? 0.5 : 0.55);
     body = new THREE.Mesh(
       new THREE.CylinderGeometry(r, r, sh === "buckler" ? 0.05 : sh === "lid" ? 0.04 : 0.06, 20),
@@ -879,6 +884,12 @@ const HELM_LOOK: Record<HelmetParams["style"], HelmLook> = {
   f1: { dome: "tall", visor: true, face: true },
   earmuffs: { dome: "band", ears: true },
   ballcap: { dome: "round", peak: true },
+  diving: { dome: "bucket", visor: true, bars: true },
+  football: { dome: "round", face: true, crest: true },
+  mask: { dome: "wrap" },
+  chef: { dome: "tall" },
+  tophat: { dome: "tall", wide: true },
+  mortar: { dome: "flat", wide: true },
 };
 
 function buildHelmetMesh(params: HelmetParams): THREE.Group {
@@ -901,6 +912,16 @@ function buildHelmetMesh(params: HelmetParams): THREE.Group {
               metalness: material === "polycarb" ? 0.15 : 0.25,
             })
           : makeMetalMat(params.metalHue, params.rarity);
+  if (params.style === "chef") {
+    metal.color.setHex(0xf7f4ee);
+    metal.metalness = 0;
+    metal.roughness = 0.8;
+  } else if (params.style === "tophat" || params.style === "mortar") {
+    metal.color.setHex(0x1b1b1b);
+    metal.metalness = 0.05;
+  } else if (params.style === "diving") {
+    metal.color.setHex(0xb08d57);
+  }
   const r = 0.14 + params.dome * 0.55;
   if (look.dome === "flat") {
     const disc = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.15, r * 1.15, r * 0.22, 16), metal);
@@ -1014,6 +1035,146 @@ function buildHelmetMesh(params: HelmetParams): THREE.Group {
   return g;
 }
 
+const CLUB_FIXED: Partial<Record<ClubParams["subtype"], number>> = {
+  scissors: 0xc5c8cc,
+  hammer: 0xb7bcc4,
+  wrench: 0xc5c8cc,
+  barreta: 0x8d939b,
+  pickaxe: 0x9aa0a8,
+  anchor: 0x6e757e,
+  chain: 0xa7adb4,
+  pipe: 0xb5b9bf,
+  crowbar: 0x8d939b,
+  gpu: 0x22262c,
+  extinguisher: 0xc0392b,
+  bottle: 0x9fd6c8,
+};
+
+function addOddClub(
+  g: THREE.Group,
+  sub: ClubParams["subtype"],
+  L: number,
+  t: number,
+  metal: THREE.Material,
+  wood: THREE.Material,
+): boolean {
+  const part = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, rz = 0) => {
+    const m = new THREE.Mesh(geo, mat);
+    m.position.set(x, y, z);
+    if (rz) m.rotation.z = rz;
+    g.add(m);
+  };
+  const haft = (mat: THREE.Material = wood, h = L * 0.62) => {
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(t * 0.4, t * 0.5, h, 6), mat);
+    m.position.y = h * 0.45;
+    g.add(m);
+  };
+  switch (sub) {
+    case "cleaver":
+      haft(wood, L * 0.4);
+      part(new THREE.BoxGeometry(t * 4, L * 0.45, t * 0.4), metal, t, L * 0.7, 0);
+      return true;
+    case "umbrella":
+      haft(metal, L * 0.8);
+      part(new THREE.ConeGeometry(L * 0.28, L * 0.22, 10), metal, 0, L * 0.82, 0);
+      return true;
+    case "bottle":
+      part(new THREE.CylinderGeometry(t * 1.2, t * 1.4, L * 0.55, 8), metal, 0, L * 0.3, 0);
+      part(new THREE.CylinderGeometry(t * 0.45, t * 0.5, L * 0.22, 6), metal, 0, L * 0.65, 0);
+      return true;
+    case "extinguisher":
+      part(new THREE.CylinderGeometry(t * 1.6, t * 1.6, L * 0.7, 10), metal, 0, L * 0.4, 0);
+      part(new THREE.CylinderGeometry(t * 0.25, t * 0.25, L * 0.2, 6), metal, t * 1.4, L * 0.7, 0);
+      return true;
+    case "rollingPin":
+      part(new THREE.CylinderGeometry(t * 1.8, t * 1.8, L * 0.55, 10), wood, 0, L * 0.45, 0, Math.PI / 2);
+      return true;
+    case "chain":
+      for (let i = 0; i < 6; i++) {
+        const link = new THREE.Mesh(new THREE.TorusGeometry(t * 1.3, t * 0.35, 5, 8), metal);
+        link.position.y = 0.08 + i * t * 2.4;
+        link.rotation.y = i % 2 ? Math.PI / 2 : 0;
+        g.add(link);
+      }
+      return true;
+    case "skateboard":
+      part(new THREE.BoxGeometry(L * 0.28, t * 0.6, L * 0.9), wood, 0, t, 0);
+      return true;
+    case "golf":
+      haft(metal, L);
+      part(new THREE.BoxGeometry(t * 2.2, t * 1.2, t * 1.4), metal, t, L * 0.92, 0);
+      return true;
+    case "racket":
+      haft(wood, L * 0.45);
+      part(new THREE.TorusGeometry(L * 0.16, t * 0.35, 6, 14), metal, 0, L * 0.72, 0);
+      return true;
+    case "hammer":
+      haft();
+      part(new THREE.BoxGeometry(L * 0.28, t * 1.6, t * 1.4), metal, 0, L * 0.78, 0);
+      return true;
+    case "wrench":
+      haft(metal, L * 0.7);
+      part(new THREE.BoxGeometry(t * 3, t * 1.4, t * 0.5), metal, 0, L * 0.85, 0);
+      return true;
+    case "machete":
+      haft(wood, L * 0.3);
+      part(new THREE.BoxGeometry(t * 1.2, L * 0.7, t * 0.25), metal, 0, L * 0.6, 0);
+      return true;
+    case "pickaxe":
+      haft();
+      part(new THREE.BoxGeometry(L * 0.4, t * 0.7, t * 0.7), metal, 0, L * 0.85, 0, 0.4);
+      return true;
+    case "shovel":
+      haft();
+      part(new THREE.BoxGeometry(L * 0.22, L * 0.28, t * 0.3), metal, 0, L * 0.85, 0);
+      return true;
+    case "bone":
+      part(new THREE.CylinderGeometry(t * 0.7, t * 0.7, L * 0.6, 6), wood, 0, L * 0.4, 0);
+      part(new THREE.SphereGeometry(t * 1.4, 8, 8), wood, 0, L * 0.75, 0);
+      return true;
+    case "selfie":
+      haft(metal, L);
+      part(new THREE.BoxGeometry(t * 2, t * 3, t * 0.4), metal, 0, L * 0.92, 0);
+      return true;
+    case "gpu":
+      part(new THREE.BoxGeometry(L * 0.55, L * 0.16, t * 2), metal, 0, L * 0.2, 0);
+      part(new THREE.CylinderGeometry(t * 1.4, t * 1.4, t * 0.3, 10), metal, 0, L * 0.32, 0);
+      return true;
+    case "barreta":
+      haft(metal, L);
+      part(new THREE.BoxGeometry(t * 1.4, t * 2, L * 0.12), metal, 0, L * 0.95, 0);
+      return true;
+    case "rake":
+      haft();
+      part(new THREE.BoxGeometry(L * 0.4, t * 0.5, t * 0.4), metal, 0, L * 0.88, 0);
+      return true;
+    case "o2tank":
+      part(new THREE.CylinderGeometry(t * 1.5, t * 1.5, L * 0.75, 10), metal, 0, L * 0.4, 0);
+      return true;
+    case "anchor":
+      haft(metal, L * 0.7);
+      part(new THREE.BoxGeometry(L * 0.4, t * 0.8, t * 0.8), metal, 0, L * 0.2, 0);
+      return true;
+    case "cricket":
+      part(new THREE.BoxGeometry(t * 2.2, L * 0.72, t * 0.6), wood, 0, L * 0.5, 0);
+      return true;
+    case "morningstar":
+      haft();
+      part(new THREE.SphereGeometry(t * 2.4, 8, 8), metal, 0, L * 0.82, 0);
+      return true;
+    case "whip":
+      for (let i = 0; i < 5; i++) {
+        const seg = new THREE.Mesh(new THREE.CylinderGeometry(t * 0.35, t * 0.45, L * 0.16, 5), i === 0 ? wood : metal);
+        seg.position.set(Math.sin(i) * t * 2, 0.05 + i * L * 0.16, 0);
+        seg.rotation.z = 0.4;
+        g.add(seg);
+      }
+      return true;
+    default:
+      return false;
+  }
+}
+
 function buildClubMesh(params: ClubParams): THREE.Group {
   const g = new THREE.Group();
   const wood = new THREE.MeshStandardMaterial({ color: 0x6b4423, roughness: 0.88, metalness: 0.02 });
@@ -1103,10 +1264,23 @@ function buildClubMesh(params: ClubParams): THREE.Group {
     const knob = new THREE.Mesh(new THREE.SphereGeometry(t * 0.75, 8, 8), wood);
     knob.position.y = 0.02;
     g.add(knob);
-  } else {
+  } else if (!addOddClub(g, params.subtype, L, t, metal, wood)) {
     const stick = new THREE.Mesh(new THREE.CylinderGeometry(t * 0.9, t * 1.1, L, 8), wood);
     stick.position.y = L / 2;
     g.add(stick);
+  }
+  const fixed = CLUB_FIXED[params.subtype];
+  if (fixed != null) {
+    g.traverse((o) => {
+      if (!(o instanceof THREE.Mesh) || !(o.material instanceof THREE.MeshStandardMaterial)) return;
+      o.material.color.setHex(fixed);
+      o.material.metalness = params.subtype === "bottle" ? 0.05 : 0.65;
+      o.material.roughness = params.subtype === "bottle" ? 0.15 : 0.4;
+      if (params.subtype === "bottle") {
+        o.material.transparent = true;
+        o.material.opacity = 0.55;
+      }
+    });
   }
   g.rotation.x = -Math.PI / 2;
   return g;

@@ -1,11 +1,14 @@
 import type {
+  AmuletParams,
   ArmorParams,
   AxeParams,
+  BeltParams,
   BootsParams,
   ClubParams,
   GlovesParams,
   HelmetParams,
   PantsParams,
+  RingParams,
   ShieldParams,
   SwordParams,
   ThrowParams,
@@ -13,7 +16,7 @@ import type {
   CrossbowParams,
   Rarity,
 } from "./types";
-import { rarityRank } from "./rng";
+import { pickRarity, RARITIES, rarityRank } from "./rng";
 
 /**
  * Nivel de rareza 1-based para los gates de loot procedural:
@@ -76,21 +79,24 @@ export const ARMOR_RARITY: Partial<Record<ArmorParams["style"], RarityRange>> = 
   swat: [7, 8], // chaleco táctico
 };
 
-/** Espadas: hoja común abajo; ancha / katana / sable arriba. */
+/** La daga es un ítem propio, no una espada corta. */
+export const DAGGER_RARITY: RarityRange = [2, 5];
+
+/** Espadas: cada hoja es un ítem (recta, cimitarra, florete, mandoble, katana, sable). */
 export const SWORD_RARITY: Partial<Record<SwordParams["bladeType"], RarityRange>> = {
-  straight: [4, 8], // recta
-  curved: [4, 6], // curva
-  foil: [3, 5], // florete
-  wide: [6, 8], // ancha
-  katana: [5, 8], // katana
-  saber: [6, 8], // sable
+  straight: [4, 8], // Espada
+  curved: [4, 6], // Cimitarra
+  foil: [3, 5], // Florete
+  wide: [6, 8], // Mandoble
+  katana: [5, 8], // Katana
+  saber: [6, 8], // Sable
 };
 
 /** Hachas: barba abajo; doble filo arriba. */
 export const AXE_RARITY: Partial<Record<AxeParams["headStyle"], RarityRange>> = {
-  bearded: [5, 8], // de barba
-  broad: [4, 7], // ancha
-  double: [5, 8], // doble filo
+  bearded: [5, 8], // Hacha de barba
+  broad: [4, 7], // Hacha ancha
+  double: [5, 8], // Hacha doble
 };
 
 /** Arcos: arco abajo; ballesta arriba. */
@@ -112,6 +118,30 @@ export const CLUB_RARITY: Partial<Record<ClubParams["subtype"], RarityRange>> = 
   scissors: [1, 2], // tijera
   crowbar: [3, 4], // palanca
   nunchaku: [4, 6], // nunchaku
+  cleaver: [2, 5], // cuchilla de cocina
+  umbrella: [1, 3], // paraguas
+  bottle: [1, 3], // botella de vidrio
+  extinguisher: [3, 6], // matafuegos
+  rollingPin: [1, 4], // palo de amasar
+  chain: [2, 5], // cadena
+  skateboard: [2, 5], // tabla de skate
+  golf: [3, 6], // palo de golf
+  racket: [2, 5], // raqueta de tenis
+  hammer: [3, 6], // martillo
+  wrench: [2, 5], // llave
+  machete: [3, 6], // machete
+  pickaxe: [4, 7], // pico
+  shovel: [3, 6], // pala
+  bone: [4, 7], // hueso
+  selfie: [1, 3], // palo de selfie
+  gpu: [7, 8], // GeForce RTX 5090
+  barreta: [3, 6], // barreta
+  rake: [2, 5], // rastrillo
+  o2tank: [4, 7], // tubo de oxígeno
+  anchor: [5, 8], // ancla
+  cricket: [2, 5], // bate de cricket
+  morningstar: [5, 8], // estrella del alba
+  whip: [5, 8], // látigo
 };
 
 /** Arrojadizas: honda y daga abajo; bazooka solo legendary. */
@@ -139,6 +169,7 @@ export const SHIELD_RARITY: Partial<Record<ShieldParams["shape"], RarityRange>> 
   kite: [4, 7], // de cometa
   tower: [6, 8], // torre
   pavise: [7, 8], // pavés
+  cymbal: [1, 4], // platillo de batería
 };
 
 /** Botas: crocs/ojotas abajo; plate/greaves solo epic–legendary. */
@@ -195,6 +226,12 @@ export const HELMET_RARITY: Partial<Record<HelmetParams["style"], RarityRange>> 
   f1: [5, 7], // casco de Fórmula 1
   nasa: [5, 7], // casco de astronauta
   swat: [7, 8], // casco táctico
+  diving: [5, 8], // casco de buzo
+  football: [3, 6], // casco de fútbol americano
+  mask: [1, 3], // barbijo
+  chef: [1, 4], // gorro de cocina
+  tophat: [3, 6], // galera
+  mortar: [2, 5], // birrete
 };
 
 /** Pantalones: shorts/tela abajo; plated solo epic–legendary. */
@@ -228,20 +265,90 @@ export const GLOVE_RARITY: Partial<Record<GlovesParams["style"], RarityRange>> =
   claws: [2, 3], // garras
 };
 
+/** Cintos. */
+export const BELT_RARITY: Partial<Record<BeltParams["style"], RarityRange>> = {
+  rope: [1, 4], // soga
+  leather: [2, 6], // cuero
+  sash: [2, 5], // faja
+  utility: [4, 7], // táctico
+  chainbelt: [5, 8], // cadena
+  plated: [6, 8], // placas
+};
+
+/** Anillos. */
+export const RING_RARITY: Partial<Record<RingParams["style"], RarityRange>> = {
+  band: [1, 5], // banda
+  braided: [2, 6], // trenzado
+  signet: [4, 7], // sello
+  gem: [5, 8], // gema
+  skull: [6, 8], // calavera
+};
+
+/** Amuletos. */
+export const AMULET_RARITY: Partial<Record<AmuletParams["style"], RarityRange>> = {
+  charm: [1, 4], // dije
+  pendant: [2, 6], // colgante
+  tooth: [3, 7], // colmillo
+  medallion: [4, 8], // medallón
+  relic: [6, 8], // reliquia
+};
+
 /**
- * Filtra `styles` por rareza del ítem (1–8) y elige uno al azar.
- * Mythic: sin filtro (unique / easter egg / override fijo).
+ * Cada clave de estas tablas es un ítem distinto (cimitarra, florete, hacha de barba…),
+ * no una variante de otro. La rareza es del ítem: solo puede salir dentro de su rango.
  */
+export function stylesAt<T extends string>(
+  rarity: Rarity,
+  styles: readonly T[],
+  rangeMap: Partial<Record<T, RarityRange>>,
+): T[] {
+  if (rarity === "mythic") return [...styles];
+  return styles.filter((s) => styleAllowed(rarity, rangeMap[s] ?? FULL));
+}
+
+export function hasItemAt<T extends string>(
+  rarity: Rarity,
+  styles: readonly T[],
+  rangeMap: Partial<Record<T, RarityRange>>,
+): boolean {
+  return stylesAt(rarity, styles, rangeMap).length > 0;
+}
+
+/** Rareza del ítem, siempre dentro de su rango. */
+export function rollRarityInRange(r: () => number, range: RarityRange): Rarity {
+  for (let i = 0; i < 30; i++) {
+    const rolled = pickRarity(r);
+    if (styleAllowed(rolled, range)) return rolled;
+  }
+  const lv = Math.max(1, Math.min(RARITY_LEVEL_MAX, range[0]));
+  return RARITIES[lv - 1] ?? "common";
+}
+
+/**
+ * Elige el ítem. Si `rarityIn` viene del loot, solo entran los que caben en esa rareza
+ * (si no hay ninguno, null). Si no viene, se elige el ítem y su rareza queda dentro de su rango.
+ */
+export function resolveItem<T extends string>(
+  r: () => number,
+  styles: readonly T[],
+  rangeMap: Partial<Record<T, RarityRange>>,
+  rarityIn?: Rarity,
+): { item: T; rarity: Rarity } | null {
+  if (!styles.length) return null;
+  if (rarityIn) {
+    const ok = stylesAt(rarityIn, styles, rangeMap);
+    if (!ok.length) return null;
+    return { item: ok[Math.floor(r() * ok.length)]!, rarity: rarityIn };
+  }
+  const item = styles[Math.floor(r() * styles.length)]!;
+  return { item, rarity: rollRarityInRange(r, rangeMap[item] ?? FULL) };
+}
+
 export function pickStyleForRarity<T extends string>(
   r: () => number,
   styles: T[],
   rarity: Rarity,
   rangeMap: Partial<Record<T, RarityRange>>,
-): T {
-  if (rarity === "mythic") {
-    return styles[Math.floor(r() * styles.length)]!;
-  }
-  const ok = styles.filter((s) => styleAllowed(rarity, rangeMap[s] ?? FULL));
-  const pool = ok.length ? ok : styles;
-  return pool[Math.floor(r() * pool.length)]!;
+): T | null {
+  return resolveItem(r, styles, rangeMap, rarity)?.item ?? null;
 }

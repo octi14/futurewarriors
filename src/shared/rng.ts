@@ -81,15 +81,15 @@ export function pickRarity(r: () => number): Rarity {
  */
 export function rarityMult(rarity: Rarity): number {
   const table: Record<Rarity, number> = {
-    vulgar: 0.95,
-    common: 1,
-    regular: 1.03,
-    uncommon: 1.07,
-    rare: 1.1,
-    exceptional: 1.15,
-    epic: 1.25,
-    legendary: 1.5,
-    mythic: 2,
+    vulgar: 0.55,
+    common: 0.72,
+    regular: 0.88,
+    uncommon: 1.05,
+    rare: 1.22,
+    exceptional: 1.45,
+    epic: 1.85,
+    legendary: 2.45,
+    mythic: 3.4,
   };
   return table[rarity];
 }

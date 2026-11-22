@@ -140,6 +140,9 @@ export function itemTooltipHtml(item: ItemInstance): string {
     );
   if (s.reach) lines.push(`<div class="tt-stat">Alcance <b>${s.reach}</b></div>`);
   if (s.attackSpeed) lines.push(`<div class="tt-stat">Vel. ataque <b>${s.attackSpeed}</b></div>`);
+  if (s.attackSpeedPct) lines.push(`<div class="tt-stat">Vel. ataque <b>${s.attackSpeedPct > 0 ? "+" : ""}${s.attackSpeedPct}%</b></div>`);
+  if (s.critChance) lines.push(`<div class="tt-stat">Crítico <b>${Math.round(s.critChance * 100)}%</b></div>`);
+  if (s.stunChance) lines.push(`<div class="tt-stat">Aturdir <b>${Math.round(s.stunChance * 100)}%</b></div>`);
   if (s.armor) lines.push(`<div class="tt-stat">Armadura <b>${s.armor}</b></div>`);
   if (s.moveSpeedMult !== 1) {
     const pct = Math.round((s.moveSpeedMult - 1) * 1000) / 10;
@@ -148,6 +151,9 @@ export function itemTooltipHtml(item: ItemInstance): string {
     );
   }
   if (s.maxHpBonus) lines.push(`<div class="tt-stat">HP máx. <b>+${s.maxHpBonus}</b></div>`);
+  if (s.hpRegenPct) lines.push(`<div class="tt-stat">Reg. vida <b>${s.hpRegenPct > 0 ? "+" : ""}${s.hpRegenPct}%</b></div>`);
+  if (s.energyRegenPct) lines.push(`<div class="tt-stat">Reg. energía <b>${s.energyRegenPct > 0 ? "+" : ""}${s.energyRegenPct}%</b></div>`);
+  if (s.maxEnergyPct) lines.push(`<div class="tt-stat">Energía máx. <b>${s.maxEnergyPct > 0 ? "+" : ""}${s.maxEnergyPct}%</b></div>`);
   if (s.woundChance)
     lines.push(
       `<div class="tt-stat">Herida abierta <b>${Math.round(s.woundChance * 100)}%</b></div>`,

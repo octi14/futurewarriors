@@ -53,7 +53,38 @@ export type ThrowParams = {
 /** Armas improvisadas / cuerpo a cuerpo no-filo. */
 export type ClubParams = {
   seed: number;
-  subtype: "bat" | "stick" | "pipe" | "crowbar" | "nunchaku" | "scissors" | "pan";
+  subtype:
+    | "bat"
+    | "stick"
+    | "pipe"
+    | "crowbar"
+    | "nunchaku"
+    | "scissors"
+    | "pan"
+    | "cleaver"
+    | "umbrella"
+    | "bottle"
+    | "extinguisher"
+    | "rollingPin"
+    | "chain"
+    | "skateboard"
+    | "golf"
+    | "racket"
+    | "hammer"
+    | "wrench"
+    | "machete"
+    | "pickaxe"
+    | "shovel"
+    | "bone"
+    | "selfie"
+    | "gpu"
+    | "barreta"
+    | "rake"
+    | "o2tank"
+    | "anchor"
+    | "cricket"
+    | "morningstar"
+    | "whip";
   length: number;
   thickness: number;
   metalHue: number;
@@ -123,7 +154,8 @@ export type ShieldParams = {
     | "pavise"
     | "lid"
     | "door"
-    | "shutter";
+    | "shutter"
+    | "cymbal";
   /** sheet=chapa, steel/adamantium/obsidian=metales especiales. */
   material:
     | "wood"
@@ -174,7 +206,13 @@ export type HelmetParams = {
     | "nasa"
     | "f1"
     | "earmuffs"
-    | "ballcap";
+    | "ballcap"
+    | "diving"
+    | "football"
+    | "mask"
+    | "chef"
+    | "tophat"
+    | "mortar";
   /** composite/polycarb = moto/racing/f1; easter eggs usan beret/cowboy/ballcap. */
   material: "leather" | "bronze" | "steel" | "composite" | "polycarb";
   dome: number;
@@ -353,11 +391,21 @@ export type ItemStats = {
   /** Daño extra de ese elemento. */
   elementDamage?: number;
   critChance?: number;
+  /** Probabilidad 0..1 de aturdir al golpear. */
+  stunChance?: number;
   blockChance?: number;
   /** >1 = más pesada (ralentiza); <1 = más ligera. */
   weightMult?: number;
   lifeRegenMult?: number;
   energyRegenMult?: number;
+  /** Porcentaje sumable (puede ser negativo). Se aplica sobre la velocidad base del arma o de los puños. */
+  attackSpeedPct?: number;
+  /** Porcentaje de regeneración de vida. Negativo la reduce. */
+  hpRegenPct?: number;
+  /** Porcentaje de regeneración de energía. Negativo la reduce. */
+  energyRegenPct?: number;
+  /** Porcentaje de energía máxima. Negativo la baja. */
+  maxEnergyPct?: number;
   /** Resistencias 0..1 (reducción). */
   resistFire?: number;
   resistIce?: number;

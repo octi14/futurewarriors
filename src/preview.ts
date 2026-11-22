@@ -109,7 +109,7 @@ document.getElementById("btn-slash")!.addEventListener("click", () => {
 });
 document.getElementById("btn-twohand")!.addEventListener("click", () => {
   twoHandStance = true;
-  equipment.weapon = asTwoHand(createSwordItem(randomSwordSeed()));
+  equipment.weapon = asTwoHand(createSwordItem(randomSwordSeed())!);
   equipment.offhand = null;
   rebuild();
   status.textContent = `${status.textContent} · pose 2H`;
@@ -198,7 +198,7 @@ function focusHands(): void {
   controls.update();
 }
 function setTestBoots(style: BootsParams["style"], metalTone: BootsParams["metalTone"] = "none"): void {
-  const b = createBootsItem((Math.random() * 1e9) | 0);
+  const b = createBootsItem((Math.random() * 1e9) | 0)!;
   const p = b.params as BootsParams;
   p.style = style;
   p.metalTone = metalTone;
@@ -299,38 +299,38 @@ function makeItem(kind: string): ItemInstance {
   const seed = randomSwordSeed();
   switch (kind) {
     case "sword":
-      return createSwordItem(seed);
+      return createSwordItem(seed)!;
     case "dagger":
     case "daggerOff":
-      return createDaggerItem(seed);
+      return createDaggerItem(seed)!;
     case "axe":
-      return createAxeItem(seed, false, false);
+      return createAxeItem(seed, false, false)!;
     case "axe2h":
-      return createAxeItem(seed, false, true);
+      return createAxeItem(seed, false, true)!;
     case "smallAxe":
-      return createSmallAxeItem(seed);
+      return createSmallAxeItem(seed)!;
     case "bow":
-      return createBowItem(seed);
+      return createBowItem(seed)!;
     case "crossbow":
-      return createCrossbowItem(seed);
+      return createCrossbowItem(seed)!;
     case "throw":
-      return createThrowItem(seed);
+      return createThrowItem(seed)!;
     case "shield":
-      return createShieldItem(seed);
+      return createShieldItem(seed)!;
     case "helmet":
-      return createHelmetItem(seed);
+      return createHelmetItem(seed)!;
     case "armor":
-      return createArmorItem(seed);
+      return createArmorItem(seed)!;
     case "belt":
-      return createBeltItem(seed);
+      return createBeltItem(seed)!;
     case "boots":
-      return createBootsItem(seed);
+      return createBootsItem(seed)!;
     case "pants":
-      return createPantsItem(seed);
+      return createPantsItem(seed)!;
     case "gloves":
-      return createGlovesItem(seed);
+      return createGlovesItem(seed)!;
     default:
-      return createSwordItem(seed);
+      return createSwordItem(seed)!;
   }
 }
 

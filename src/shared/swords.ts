@@ -1,6 +1,7 @@
 import { rollElement, withElementStats } from "./elements";
-import { fillRarityAdj, pickRarity, rarityMult, rarityT, rngFromSeed } from "./rng";
-import { pickStyleForRarity, SWORD_RARITY } from "./rarityGates";
+import { stampItem } from "./affixes";
+import { fillRarityAdj, rarityMult, rarityT, rngFromSeed } from "./rng";
+import { resolveItem, SWORD_RARITY, DAGGER_RARITY, styleAllowed, rollRarityInRange } from "./rarityGates";
 import type { ItemInstance, ItemStats, Rarity, SwordParams } from "./types";
 
 export { rngFromSeed, pickRarity, rarityMult } from "./rng";
@@ -72,15 +73,14 @@ function rollGuard(r: () => number): SwordParams["guardStyle"] {
   return "swept";
 }
 
-export function generateSwordParams(seed: number): SwordParams {
+const SWORD_ITEMS = ["straight", "curved", "wide", "katana", "foil", "saber"] as const;
+
+export function generateSwordParams(seed: number, rarityIn?: Rarity): SwordParams | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
-  const bladeType = pickStyleForRarity(
-    r,
-    ["straight", "curved", "wide", "katana", "foil", "saber"],
-    rarity,
-    SWORD_RARITY,
-  );
+  const picked = resolveItem(r, SWORD_ITEMS, SWORD_RARITY, rarityIn);
+  if (!picked) return null;
+  const rarity = picked.rarity;
+  const bladeType = picked.item;
 
   const lengthBase =
     bladeType === "foil"
@@ -159,6 +159,15 @@ const adjectives = fillRarityAdj(
   },
 );
 
+const BLADE_NOUN: Record<SwordParams["bladeType"], string> = {
+  straight: "Espada",
+  curved: "Cimitarra",
+  wide: "Mandoble",
+  katana: "Katana",
+  saber: "Sable",
+  foil: "Florete",
+};
+
 export function nameFromParams(params: SwordParams): string {
   const r = rngFromSeed(params.seed ^ 0xabc123);
   if (params.rarity === "mythic") {
@@ -166,7 +175,7 @@ export function nameFromParams(params: SwordParams): string {
     return names[Math.floor(r() * names.length)]!;
   }
   const adj = adjectives[params.rarity];
-  return `${adj[Math.floor(r() * adj.length)]} Espada`;
+  return `${adj[Math.floor(r() * adj.length)]} ${BLADE_NOUN[params.bladeType]}`;
 }
 
 let itemSeq = 1;
@@ -175,10 +184,11 @@ export function nextItemId(seed: number): string {
   return `item_${itemSeq++}_${seed}`;
 }
 
-export function createSwordItem(seed: number): ItemInstance {
-  const params = generateSwordParams(seed);
+export function createSwordItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
+  const params = generateSwordParams(seed, rarityIn);
+  if (!params) return null;
   const r = rngFromSeed(seed ^ 0xe1e3);
-  return {
+  return stampItem({
     id: nextItemId(seed),
     kind: "sword",
     equipSlot: "weapon",
@@ -188,18 +198,19 @@ export function createSwordItem(seed: number): ItemInstance {
     name: nameFromParams(params),
     gridW: params.bladeType === "wide" ? 2 : 1,
     gridH: 3,
-  };
+  }, r);
 }
 
 /** Puñal / daga corta — dual wieldable. */
-export function createDaggerItem(seed: number): ItemInstance {
+export function createDaggerItem(seed: number, rarityIn?: Rarity): ItemInstance | null {
   const r = rngFromSeed(seed);
-  const rarity = pickRarity(r);
+  if (rarityIn && !styleAllowed(rarityIn, DAGGER_RARITY)) return null;
+  const rarity = rarityIn ?? rollRarityInRange(r, DAGGER_RARITY);
   const metal = rollMetalTone(r, rarity);
   const grip = rollGrip(r);
   const params: SwordParams = {
     seed,
-    bladeType: pickStyleForRarity(r, ["straight", "curved"], rarity, SWORD_RARITY),
+    bladeType: "straight",
     bladeLength: 0.32 + r() * 0.22,
     bladeWidth: 0.045 + r() * 0.04,
     guardSpan: 0.1 + r() * 0.1,
@@ -216,7 +227,7 @@ export function createDaggerItem(seed: number): ItemInstance {
     rarity === "mythic"
       ? adjectives.mythic[Math.floor(r() * adjectives.mythic.length)]!
       : `${adj[Math.floor(r() * adj.length)]} Daga`;
-  return {
+  return stampItem({
     id: nextItemId(seed),
     kind: "sword",
     equipSlot: "weapon",
@@ -226,7 +237,7 @@ export function createDaggerItem(seed: number): ItemInstance {
     name,
     gridW: 1,
     gridH: 2,
-  };
+  }, r);
 }
 
 export function randomSwordSeed(): number {

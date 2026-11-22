@@ -337,25 +337,34 @@ function unarmedCombatStats(world: WorldState): ItemStats {
     ...base,
     damage: Math.round((base.damage + (g.stats.damage || 4)) * 10) / 10,
     reach: Math.max(base.reach, 0.85 + (g.stats.reach || 0)),
-    attackSpeed: Math.max(base.attackSpeed, g.stats.attackSpeed || 1.25),
+    attackSpeed: base.attackSpeed,
     woundChance: g.stats.woundChance ?? 0.45,
   };
+}
+
+function scaledAttack(stats: ItemStats, world: WorldState): ItemStats {
+  const pct = gearTotals(world).attackSpeedPct;
+  const attackSpeed = Math.max(0.35, stats.attackSpeed * (1 + pct / 100));
+  return { ...stats, attackSpeed: Math.round(attackSpeed * 100) / 100 };
 }
 
 /** Stats de combate: arma principal + bonus de doble arma si aplica. Sin arma → puños/garras. */
 export function getCombatWeaponStats(world: WorldState): ItemStats {
   const main = getEquipped(world);
-  if (!main) return unarmedCombatStats(world);
+  if (!main) return scaledAttack(unarmedCombatStats(world), world);
   const off = getOffhandWeapon(world);
   const base = main.stats;
-  if (!off) return { ...base };
-  return {
-    ...base,
-    damage: Math.round((base.damage + off.stats.damage * 0.6) * 10) / 10,
-    reach: Math.max(base.reach, off.stats.reach),
-    attackSpeed: Math.round(Math.max(base.attackSpeed, off.stats.attackSpeed) * 1.08 * 100) / 100,
-    windup: Math.min(base.windup, off.stats.windup),
-  };
+  if (!off) return scaledAttack({ ...base }, world);
+  return scaledAttack(
+    {
+      ...base,
+      damage: Math.round((base.damage + off.stats.damage * 0.6) * 10) / 10,
+      reach: Math.max(base.reach, off.stats.reach),
+      attackSpeed: Math.round(Math.max(base.attackSpeed, off.stats.attackSpeed) * 1.08 * 100) / 100,
+      windup: Math.min(base.windup, off.stats.windup),
+    },
+    world,
+  );
 }
 
 /** Daño total del golpe (físico + elemental de arma + gear). */
@@ -392,20 +401,48 @@ export function gearTotals(world: WorldState): {
   /** Suma de puntos porcentuales de velocidad (p.ej. 5 = +5%). */
   moveSpeedBonusPct: number;
   maxHpBonus: number;
+  attackSpeedPct: number;
+  hpRegenPct: number;
+  energyRegenPct: number;
+  maxEnergyPct: number;
+  critChance: number;
+  stunChance: number;
 } {
   let armor = 0;
   let speedPct = 0;
   let maxHpBonus = 0;
+  let attackSpeedPct = 0;
+  let hpRegenPct = 0;
+  let energyRegenPct = 0;
+  let maxEnergyPct = 0;
+  let critChance = 0;
+  let stunChance = 0;
   for (const item of Object.values(world.equipment)) {
     if (!item) continue;
     armor += item.stats.armor;
-    // moveSpeedMult 1.04 → +4%; 0.92 → −8%. Se suman, no se multiplican en cadena.
     speedPct += (item.stats.moveSpeedMult - 1) * 100;
     maxHpBonus += item.stats.maxHpBonus;
+    attackSpeedPct += item.stats.attackSpeedPct ?? 0;
+    hpRegenPct += item.stats.hpRegenPct ?? 0;
+    energyRegenPct += item.stats.energyRegenPct ?? 0;
+    maxEnergyPct += item.stats.maxEnergyPct ?? 0;
+    critChance += item.stats.critChance ?? 0;
+    stunChance += item.stats.stunChance ?? 0;
   }
   const moveSpeedBonusPct = Math.round(speedPct * 10) / 10;
   const moveSpeedMult = Math.max(0.55, 1 + speedPct / 100);
-  return { armor, moveSpeedMult, moveSpeedBonusPct, maxHpBonus };
+  return {
+    armor,
+    moveSpeedMult,
+    moveSpeedBonusPct,
+    maxHpBonus,
+    attackSpeedPct,
+    hpRegenPct,
+    energyRegenPct,
+    maxEnergyPct,
+    critChance: Math.min(0.6, critChance),
+    stunChance: Math.min(0.5, stunChance),
+  };
 }
 
 /** Recalcula movimiento / maxHp del jugador según core + gear. */
@@ -418,6 +455,12 @@ export function applyGearToPlayer(world: WorldState): void {
     const ratio = p.maxHp > 0 ? p.hp / p.maxHp : 1;
     p.maxHp = newMax;
     p.hp = Math.min(newMax, Math.max(1, Math.round(ratio * newMax)));
+  }
+  const newMaxE = Math.max(20, Math.round(BASE_PLAYER_MAX_ENERGY * (1 + g.maxEnergyPct / 100)));
+  if (newMaxE !== p.maxEnergy) {
+    const ratio = p.maxEnergy > 0 ? p.energy / p.maxEnergy : 1;
+    p.maxEnergy = newMaxE;
+    p.energy = Math.min(newMaxE, Math.max(0, ratio * newMaxE));
   }
 }
 
@@ -645,7 +688,7 @@ function chargeKindForWeapon(weapon: ItemInstance | null): ChargeKind {
     const p = weapon.params as ClubParams;
     if (p.subtype === "nunchaku") return "arc";
     if (p.subtype === "scissors") return "thrust";
-    if (p.subtype === "pan" || p.subtype === "crowbar" || p.subtype === "pipe") return "slam";
+    if (p.subtype === "pan" || p.subtype === "crowbar" || p.subtype === "pipe" || p.subtype === "hammer" || p.subtype === "morningstar" || p.subtype === "bone" || p.subtype === "cricket" || p.subtype === "anchor") return "slam";
     return "thrust";
   }
   if (weapon.kind === "sword") {
@@ -731,12 +774,12 @@ function updateProjectiles(world: WorldState, dt: number): void {
     for (const ai of world.ais) {
       if (!ai.alive || ai.role === "hunter") continue;
       if (dist(p.pos, ai.pos) > p.radius + 0.55) continue;
-      dealDamage(world, ai, p.damage);
+      dealDamage(world, ai, playerStrike(world, p.damage));
       const klen = Math.hypot(p.dirX, p.dirY) || 1;
       ai.pos.x += (p.dirX / klen) * p.knock;
       ai.pos.y += (p.dirY / klen) * p.knock;
       clampToMap(ai.pos, world.config.mapSize);
-      ai.stunTimer = Math.max(ai.stunTimer, p.stun);
+      ai.stunTimer = Math.max(ai.stunTimer, p.stun + extraStun(world));
       ai.attackSwing = 0;
       if (!ai.alive) {
         spawnLoot(world, ai.pos);
@@ -843,6 +886,17 @@ function pushDamage(world: WorldState, pos: Vec2, amount: number): void {
     life: 0.7,
     maxLife: 0.7,
   });
+}
+
+function playerStrike(world: WorldState, amount: number): number {
+  const crit = gearTotals(world).critChance;
+  if (crit > 0 && Math.random() < crit) return amount * 1.75;
+  return amount;
+}
+
+function extraStun(world: WorldState): number {
+  const chance = gearTotals(world).stunChance;
+  return chance > 0 && Math.random() < chance ? 0.45 : 0;
 }
 
 function dealDamage(world: WorldState, target: Actor, amount: number, applyGearArmor = false): void {
@@ -1030,9 +1084,9 @@ function resolveSlashHit(world: WorldState): void {
     if (facingDot < minDot) continue;
     {
       const hit = getHitDamageBreakdown(world);
-      dealDamage(world, ai, outgoingDamage(player, hit.physical + hit.elemental) * dmgMult);
+      dealDamage(world, ai, playerStrike(world, outgoingDamage(player, hit.physical + hit.elemental) * dmgMult));
       if (offWeapon)
-        dealDamage(world, ai, outgoingDamage(player, offWeapon.stats.damage) * dmgMult);
+        dealDamage(world, ai, playerStrike(world, outgoingDamage(player, offWeapon.stats.damage) * dmgMult));
       const woundP =
         (weapon?.stats.woundChance ?? 0) ||
         (!weapon ? getCombatWeaponStats(world).woundChance ?? 0 : 0);
@@ -1055,7 +1109,7 @@ function resolveSlashHit(world: WorldState): void {
     ai.pos.x += (kdx / klen) * knock;
     ai.pos.y += (kdy / klen) * knock;
     clampToMap(ai.pos, world.config.mapSize);
-    ai.stunTimer = Math.max(ai.stunTimer, AI_STUN_ON_HIT * stunMult);
+    ai.stunTimer = Math.max(ai.stunTimer, AI_STUN_ON_HIT * stunMult + extraStun(world));
     ai.attackSwing = 0;
     hits += 1;
     if (!ai.alive) {
@@ -1299,13 +1353,15 @@ export function stepWorld(world: WorldState, dt: number, input: InputState): voi
     }
 
     if (!player.running) {
+      const enMul = Math.max(0, 1 + gearTotals(world).energyRegenPct / 100);
       player.energy = Math.min(
         player.maxEnergy,
-        player.energy + ENERGY_REGEN * dt,
+        player.energy + ENERGY_REGEN * enMul * dt,
       );
     }
     if (player.hp > 0 && player.hp < player.maxHp) {
-      player.hp = Math.min(player.maxHp, player.hp + HP_REGEN * dt);
+      const hpMul = Math.max(0, 1 + gearTotals(world).hpRegenPct / 100);
+      player.hp = Math.min(player.maxHp, player.hp + HP_REGEN * hpMul * dt);
     }
 
     world.aimPos = input.hasAim ? { x: input.aimX, y: input.aimY } : null;

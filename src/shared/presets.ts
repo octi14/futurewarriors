@@ -112,6 +112,7 @@ export const SHIELD_VISUAL = identity([
   "lid",
   "door",
   "shutter",
+  "cymbal",
 ] as const satisfies readonly ShieldParams["shape"][]);
 
 /** @deprecated Ya no hay alias; se mantiene por compat. */
